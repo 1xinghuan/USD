@@ -243,7 +243,7 @@ PxrUsdKatanaReadPointInstancer(
     //
     std::vector<bool> pruneMaskValues =
             instancer.ComputeMaskAtTime(currentTime);
-    if (!pruneMaskValues.empty() and pruneMaskValues.size() != numInstances)
+    if (!pruneMaskValues.empty() && pruneMaskValues.size() != numInstances)
     {
         _LogAndSetError(instancerAttrMap,
                 "Mismatch in length of indices and mask");
@@ -339,7 +339,7 @@ PxrUsdKatanaReadPointInstancer(
 
         // Check to see if we are pruned.
         //
-        bool isPruned = (!pruneMaskValues.empty() and
+        bool isPruned = (!pruneMaskValues.empty() &&
                          pruneMaskValues[i] == false);
         if (isPruned)
         {
@@ -377,15 +377,15 @@ PxrUsdKatanaReadPointInstancer(
             // root.
             //
             UsdPrim prim = protoPrim;
-            while (prim and prim != instancer.GetPrim() and
+            while (prim && prim != instancer.GetPrim() &&
                    prim != data.GetUsdInArgs()->GetRootPrim())
             {
                 UsdRelationship materialBindingsRel =
                         UsdShadeMaterial::GetBindingRel(prim);
                 SdfPathVector materialPaths;
-                bool hasMaterialBindings = (materialBindingsRel and
+                bool hasMaterialBindings = (materialBindingsRel &&
                         materialBindingsRel.GetForwardedTargets(
-                            &materialPaths) and !materialPaths.empty());
+                            &materialPaths) && !materialPaths.empty());
 
                 TfToken kind;
                 std::string assetName;
@@ -393,9 +393,9 @@ PxrUsdKatanaReadPointInstancer(
                 // If the prim is a (sub)component, it should have materials
                 // defined below it.
                 bool hasMaterialChildren = (
-                        assetAPI.GetAssetName(&assetName) and
-                        assetAPI.GetKind(&kind) and (
-                            KindRegistry::IsA(kind, KindTokens->component) or
+                        assetAPI.GetAssetName(&assetName) &&
+                        assetAPI.GetKind(&kind) && (
+                            KindRegistry::IsA(kind, KindTokens->component) ||
                             KindRegistry::IsA(kind, KindTokens->subcomponent)));
 
                 if (hasMaterialChildren)

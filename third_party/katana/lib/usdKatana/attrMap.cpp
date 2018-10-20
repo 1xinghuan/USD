@@ -27,7 +27,6 @@
 
 PXR_NAMESPACE_OPEN_SCOPE
 
-
 void
 PxrUsdKatanaAttrMap::set(
         const std::string& path,

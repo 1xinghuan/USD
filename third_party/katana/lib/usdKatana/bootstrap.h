@@ -21,27 +21,18 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
+#ifndef PXRUSDKATANA_BOOTSTRAP_H
+#define PXRUSDKATANA_BOOTSTRAP_H
+
 #include "pxr/pxr.h"
 #include "usdKatana/api.h"
 
 PXR_NAMESPACE_OPEN_SCOPE
 
-#ifndef PXRUSDKATANA_NURBSPATCH_H
-#define PXRUSDKATANA_NURBSPATCH_H
-
-class PxrUsdKatanaAttrMap;
-class PxrUsdKatanaUsdInPrivateData;
-class UsdGeomNurbsPatch;
-
-/// \brief read \p nurbspatch into \p attrs.
+/// \brief bootstrap Geolib.
 USDKATANA_API
-void
-PxrUsdKatanaReadNurbsPatch(
-        const UsdGeomNurbsPatch& nurbsPatch,
-        const PxrUsdKatanaUsdInPrivateData& data,
-        PxrUsdKatanaAttrMap& attrs);
-
+void PxrUsdKatanaBootstrap();
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXRUSDKATANA_NURBSPATCH_H
+#endif // PXRUSDKATANA_BOOTSTRAP_H
