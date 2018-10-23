@@ -23,7 +23,7 @@
 //
 
 #include "pxr/pxr.h"
-
+#include "usdKatana/bootstrap.h"
 #include "pxrUsdInPrman/declarePackageOps.h"
 
 
@@ -41,4 +41,6 @@ void registerPlugins()
     
     PxrUsdKatanaUsdInPluginRegistry::RegisterLocationDecoratorOp(
             "PxrUsdInPrman_LocationDecorator");
+
+    PxrUsdKatanaBootstrap();
 }

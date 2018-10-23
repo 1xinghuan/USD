@@ -32,6 +32,9 @@
 #include "pxr/base/vt/array.h"
 #include "pxr/base/vt/value.h"
 #include "pxr/usd/pcp/mapExpression.h"
+#ifdef _WIN32
+#   include <FnPlatform/Windows.h>
+#endif
 #include "pxr/usd/usd/relationship.h"
 #include "pxr/usd/usd/attribute.h"
 #include "pxr/usd/usd/collectionAPI.h"
