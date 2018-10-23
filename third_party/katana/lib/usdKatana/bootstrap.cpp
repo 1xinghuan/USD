@@ -85,7 +85,7 @@ void PxrUsdKatanaBootstrap()
 
         if (hostSuite)
         {
-            FnPluginHost* host = hostSuite->getHost();
+            FnPluginHost* host = reinterpret_cast<FnPluginHost*>(hostSuite->getHost());
 
             FnAttribute::Attribute::setHost(host);
             FnAttribute::GroupBuilder::setHost(host);
