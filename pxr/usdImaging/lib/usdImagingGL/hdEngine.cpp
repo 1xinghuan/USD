@@ -71,6 +71,7 @@ UsdImagingGLHdEngine::UsdImagingGLHdEngine(
     , _rendererPlugin(nullptr)
     , _taskController(nullptr)
     , _selectionColor(1.0f, 1.0f, 0.0f, 1.0f)
+    , _viewport(0.0f, 0.0f, 512.0f, 512.0f)
     , _rootPath(rootPath)
     , _excludedPrimPaths(excludedPrimPaths)
     , _invisedPrimPaths(invisedPrimPaths)
@@ -79,7 +80,7 @@ UsdImagingGLHdEngine::UsdImagingGLHdEngine(
 {
     // _renderIndex, _taskController, and _delegate are initialized
     // by the plugin system.
-    if (!SetRendererPlugin(GetDefaultRendererPluginId())) {
+    if (!SetRendererPlugin(_GetDefaultRendererPluginId())) {
         TF_CODING_ERROR("No renderer plugins found! Check before creation.");
     }
 }
@@ -90,7 +91,7 @@ UsdImagingGLHdEngine::~UsdImagingGLHdEngine()
 }
 
 HdRenderIndex *
-UsdImagingGLHdEngine::GetRenderIndex() const
+UsdImagingGLHdEngine::_GetRenderIndex() const
 {
     return _renderIndex;
 }
@@ -139,7 +140,7 @@ _GetRefineLevel(float c)
 
 bool 
 UsdImagingGLHdEngine::_CanPrepareBatch(const UsdPrim& root, 
-                                     const RenderParams& params)
+                                       const UsdImagingGLRenderParams& params)
 {
     HD_TRACE_FUNCTION();
 
@@ -158,7 +159,8 @@ UsdImagingGLHdEngine::_CanPrepareBatch(const UsdPrim& root,
 }
 
 void
-UsdImagingGLHdEngine::_PreSetTime(const UsdPrim& root, const RenderParams& params)
+UsdImagingGLHdEngine::_PreSetTime(const UsdPrim& root, 
+    const UsdImagingGLRenderParams& params)
 {
     HD_TRACE_FUNCTION();
 
@@ -172,14 +174,16 @@ UsdImagingGLHdEngine::_PreSetTime(const UsdPrim& root, const RenderParams& param
 }
 
 void
-UsdImagingGLHdEngine::_PostSetTime(const UsdPrim& root, const RenderParams& params)
+UsdImagingGLHdEngine::_PostSetTime(const UsdPrim& root, 
+    const UsdImagingGLRenderParams& params)
 {
     HD_TRACE_FUNCTION();
 }
 
 /*virtual*/
 void
-UsdImagingGLHdEngine::PrepareBatch(const UsdPrim& root, RenderParams params)
+UsdImagingGLHdEngine::PrepareBatch(const UsdPrim& root, 
+    const UsdImagingGLRenderParams &params)
 {
     HD_TRACE_FUNCTION();
 
@@ -203,7 +207,7 @@ UsdImagingGLHdEngine::PrepareBatch(const UsdPrim& root, RenderParams params)
 bool
 UsdImagingGLHdEngine::_UpdateHydraCollection(HdRprimCollection *collection,
                           SdfPathVector const& roots,
-                          UsdImagingGLEngine::RenderParams const& params,
+                          UsdImagingGLRenderParams const& params,
                           TfTokenVector *renderTags)
 {
     if (collection == nullptr) {
@@ -215,16 +219,16 @@ UsdImagingGLHdEngine::_UpdateHydraCollection(HdRprimCollection *collection,
     HdReprSelector reprSelector = HdReprSelector(HdReprTokens->smoothHull);
     bool refined = params.complexity > 1.0;
 
-    if (params.drawMode == UsdImagingGLEngine::DRAW_GEOM_FLAT ||
-        params.drawMode == UsdImagingGLEngine::DRAW_SHADED_FLAT) {
+    if (params.drawMode == UsdImagingGLDrawMode::DRAW_GEOM_FLAT ||
+        params.drawMode == UsdImagingGLDrawMode::DRAW_SHADED_FLAT) {
         // Flat shading
         reprSelector = HdReprSelector(HdReprTokens->hull);
     } else if (
-        params.drawMode == UsdImagingGLEngine::DRAW_WIREFRAME_ON_SURFACE) {
+        params.drawMode == UsdImagingGLDrawMode::DRAW_WIREFRAME_ON_SURFACE) {
         // Wireframe on surface
         reprSelector = HdReprSelector(refined ?
             HdReprTokens->refinedWireOnSurf : HdReprTokens->wireOnSurf);
-    } else if (params.drawMode == UsdImagingGLEngine::DRAW_WIREFRAME) {
+    } else if (params.drawMode == UsdImagingGLDrawMode::DRAW_WIREFRAME) {
         // Wireframe
         reprSelector = HdReprSelector(refined ?
             HdReprTokens->refinedWire : HdReprTokens->wire);
@@ -294,9 +298,11 @@ UsdImagingGLHdEngine::_UpdateHydraCollection(HdRprimCollection *collection,
 
 /* static */
 HdxRenderTaskParams
-UsdImagingGLHdEngine::_MakeHydraRenderParams(
-                  UsdImagingGLHdEngine::RenderParams const& renderParams)
+UsdImagingGLHdEngine::_MakeHydraUsdImagingGLRenderParams(
+    UsdImagingGLRenderParams const& renderParams)
 {
+    // Note this table is dangerous and making changes to the order of the 
+    // enums in UsdImagingGLCullStyle, will affect this with no compiler help.
     static const HdCullStyle USD_2_HD_CULL_STYLE[] =
     {
         HdCullStyleDontCare,              // Cull No Opinion (unused)
@@ -307,15 +313,16 @@ UsdImagingGLHdEngine::_MakeHydraRenderParams(
     };
     static_assert(((sizeof(USD_2_HD_CULL_STYLE) / 
                     sizeof(USD_2_HD_CULL_STYLE[0])) 
-                == UsdImagingGLEngine::CULL_STYLE_COUNT),"enum size mismatch");
+              == (size_t)UsdImagingGLCullStyle::CULL_STYLE_COUNT),
+        "enum size mismatch");
 
     HdxRenderTaskParams params;
 
     params.overrideColor       = renderParams.overrideColor;
     params.wireframeColor      = renderParams.wireframeColor;
 
-    if (renderParams.drawMode == UsdImagingGLEngine::DRAW_GEOM_ONLY ||
-        renderParams.drawMode == UsdImagingGLEngine::DRAW_POINTS) {
+    if (renderParams.drawMode == UsdImagingGLDrawMode::DRAW_GEOM_ONLY ||
+        renderParams.drawMode == UsdImagingGLDrawMode::DRAW_POINTS) {
         params.enableLighting = false;
     } else {
         params.enableLighting =  renderParams.enableLighting &&
@@ -325,7 +332,8 @@ UsdImagingGLHdEngine::_MakeHydraRenderParams(
     params.enableIdRender      = renderParams.enableIdRender;
     params.depthBiasUseDefault = true;
     params.depthFunc           = HdCmpFuncLess;
-    params.cullStyle           = USD_2_HD_CULL_STYLE[renderParams.cullStyle];
+    params.cullStyle           = USD_2_HD_CULL_STYLE[
+        (size_t)renderParams.cullStyle];
     // 32.0 is the default tessLevel of HdRasterState. we can change if we like.
     params.tessLevel           = 32.0;
 
@@ -359,22 +367,24 @@ UsdImagingGLHdEngine::_MakeHydraRenderParams(
 
 /*virtual*/
 void
-UsdImagingGLHdEngine::RenderBatch(const SdfPathVector& paths, RenderParams params)
+UsdImagingGLHdEngine::RenderBatch(const SdfPathVector& paths, 
+    const UsdImagingGLRenderParams& params)
 {
     _taskController->SetCameraClipPlanes(params.clipPlanes);
     _UpdateHydraCollection(&_renderCollection, paths, params, &_renderTags);
     _taskController->SetCollection(_renderCollection);
 
-    HdxRenderTaskParams hdParams = _MakeHydraRenderParams(params);
+    HdxRenderTaskParams hdParams = _MakeHydraUsdImagingGLRenderParams(params);
     _taskController->SetRenderParams(hdParams);
     _taskController->SetEnableSelection(params.highlight);
 
-    Render(params);
+    _Render(params);
 }
 
 /*virtual*/
 void
-UsdImagingGLHdEngine::Render(const UsdPrim& root, RenderParams params)
+UsdImagingGLHdEngine::Render(const UsdPrim& root, 
+    const UsdImagingGLRenderParams& params)
 {
     PrepareBatch(root, params);
 
@@ -385,11 +395,11 @@ UsdImagingGLHdEngine::Render(const UsdPrim& root, RenderParams params)
     _UpdateHydraCollection(&_renderCollection, roots, params, &_renderTags);
     _taskController->SetCollection(_renderCollection);
 
-    HdxRenderTaskParams hdParams = _MakeHydraRenderParams(params);
+    HdxRenderTaskParams hdParams = _MakeHydraUsdImagingGLRenderParams(params);
     _taskController->SetRenderParams(hdParams);
     _taskController->SetEnableSelection(params.highlight);
 
-    Render(params);
+    _Render(params);
 }
 
 bool
@@ -398,7 +408,7 @@ UsdImagingGLHdEngine::TestIntersection(
     const GfMatrix4d &projectionMatrix,
     const GfMatrix4d &worldToLocalSpace,
     const UsdPrim& root, 
-    RenderParams params,
+    const UsdImagingGLRenderParams& params,
     GfVec3d *outHitPoint,
     SdfPath *outHitPrimPath,
     SdfPath *outHitInstancerPath,
@@ -460,7 +470,7 @@ UsdImagingGLHdEngine::TestIntersectionBatch(
     const GfMatrix4d &projectionMatrix,
     const GfMatrix4d &worldToLocalSpace,
     const SdfPathVector& paths, 
-    RenderParams params,
+    const UsdImagingGLRenderParams& params,
     unsigned int pickResolution,
     PathTranslatorCallback pathTranslator,
     HitBatch *outHit)
@@ -477,14 +487,15 @@ UsdImagingGLHdEngine::TestIntersectionBatch(
     };
     static_assert(((sizeof(USD_2_HD_CULL_STYLE) / 
                     sizeof(USD_2_HD_CULL_STYLE[0])) 
-                == UsdImagingGLEngine::CULL_STYLE_COUNT),"enum size mismatch");
+                    == (size_t)UsdImagingGLCullStyle::CULL_STYLE_COUNT),
+            "enum size mismatch");
 
     HdxIntersector::HitVector allHits;
     HdxIntersector::Params qparams;
     qparams.viewMatrix = worldToLocalSpace * viewMatrix;
     qparams.projectionMatrix = projectionMatrix;
     qparams.alphaThreshold = params.alphaThreshold;
-    qparams.cullStyle = USD_2_HD_CULL_STYLE[params.cullStyle];
+    qparams.cullStyle = USD_2_HD_CULL_STYLE[(size_t)params.cullStyle];
     qparams.renderTags = _renderTags;
     qparams.enableSceneMaterials = params.enableSceneMaterials;
 
@@ -544,8 +555,9 @@ class _DebugGroupTaskWrapper : public HdTask {
     }
 };
 
+/*virtual*/
 void
-UsdImagingGLHdEngine::Render(RenderParams params)
+UsdImagingGLHdEngine::_Render(const UsdImagingGLRenderParams& params)
 {
     // Forward scene materials enable option to delegate
     _delegate->SetSceneMaterialsEnabled(params.enableSceneMaterials);
@@ -603,7 +615,7 @@ UsdImagingGLHdEngine::Render(RenderParams params)
         // drawmode.
         // XXX: Temporary solution until shader-based styling implemented.
         switch (params.drawMode) {
-        case DRAW_POINTS:
+        case UsdImagingGLDrawMode::DRAW_POINTS:
             glPolygonMode(GL_FRONT_AND_BACK, GL_POINT);
             break;
         default:
@@ -651,6 +663,7 @@ UsdImagingGLHdEngine::SetCameraState(const GfMatrix4d& viewMatrix,
     // update the camera in the task controller accordingly.
     _taskController->SetCameraMatrices(viewMatrix, projectionMatrix);
     _taskController->SetCameraViewport(viewport);
+    _viewport = viewport;
 }
 
 /*virtual*/
@@ -822,16 +835,8 @@ UsdImagingGLHdEngine::GetCurrentRendererId() const
 }
 
 /* static */
-bool
-UsdImagingGLHdEngine::IsDefaultRendererPluginAvailable()
-{
-    HfPluginDescVector descs;
-    HdxRendererPluginRegistry::GetInstance().GetPluginDescs(&descs);
-    return !descs.empty();
-}
-
 TfToken
-UsdImagingGLHdEngine::GetDefaultRendererPluginId()
+UsdImagingGLHdEngine::_GetDefaultRendererPluginId()
 {
     std::string defaultRendererDisplayName = 
         TfGetenv("HD_DEFAULT_RENDERER", "");
@@ -904,7 +909,16 @@ UsdImagingGLHdEngine::SetRendererPlugin(TfToken const &id)
     _rendererPlugin = plugin;
     _rendererId = actualId;
 
-    HdRenderDelegate *renderDelegate = _rendererPlugin->CreateRenderDelegate();
+    // Pass the viewport dimensions into CreateRenderDelegate, for backends that
+    // need to allocate the viewport early.
+    HdRenderSettingsMap renderSettings;
+    renderSettings[HdRenderSettingsTokens->renderBufferWidth] =
+        int(_viewport[2]);
+    renderSettings[HdRenderSettingsTokens->renderBufferHeight] =
+        int(_viewport[3]);
+
+    HdRenderDelegate *renderDelegate =
+        _rendererPlugin->CreateRenderDelegate(renderSettings);
     _renderIndex = HdRenderIndex::New(renderDelegate);
 
     // Create the new delegate & task controller.
@@ -995,6 +1009,59 @@ VtDictionary
 UsdImagingGLHdEngine::GetResourceAllocation() const
 {
     return _renderIndex->GetResourceRegistry()->GetResourceAllocation();
+}
+
+/* virtual */
+UsdImagingGLRendererSettingsList
+UsdImagingGLHdEngine::GetRendererSettingsList() const
+{
+    HdRenderSettingDescriptorList descriptors =
+        _renderIndex->GetRenderDelegate()->GetRenderSettingDescriptors();
+    UsdImagingGLRendererSettingsList ret;
+
+    for (auto const& desc : descriptors) {
+        UsdImagingGLRendererSetting r;
+        r.key = desc.key;
+        r.name = desc.name;
+        r.defValue = desc.defaultValue;
+
+        // Use the type of the default value to tell us what kind of
+        // widget to create...
+        if (r.defValue.IsHolding<bool>()) {
+            r.type = UsdImagingGLRendererSetting::TYPE_FLAG;
+        } else if (r.defValue.IsHolding<int>() ||
+                   r.defValue.IsHolding<unsigned int>()) {
+            r.type = UsdImagingGLRendererSetting::TYPE_INT;
+        } else if (r.defValue.IsHolding<float>()) {
+            r.type = UsdImagingGLRendererSetting::TYPE_FLOAT;
+        } else if (r.defValue.IsHolding<std::string>()) {
+            r.type = UsdImagingGLRendererSetting::TYPE_STRING;
+        } else {
+            TF_WARN("Setting '%s' with type '%s' doesn't have a UI"
+                    " implementation...",
+                    r.name.c_str(),
+                    r.defValue.GetTypeName().c_str());
+            continue;
+        }
+        ret.push_back(r);
+    }
+
+    return ret;
+}
+
+/* virtual */
+VtValue
+UsdImagingGLHdEngine::GetRendererSetting(TfToken const& id) const
+{
+    return _renderIndex->GetRenderDelegate()->GetRenderSetting(id);
+}
+
+/* virtual */
+void
+UsdImagingGLHdEngine::SetRendererSetting(TfToken const& id,
+                                         VtValue const& value)
+{
+    _renderIndex->GetRenderDelegate()->SetRenderSetting(id, value);
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

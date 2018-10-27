@@ -676,23 +676,25 @@ HdSt_CodeGen::Compile()
             _procGS << "vec4 GetPatchCoord(int index);\n"
                     << "void ProcessPrimvars(int index) {\n"
                     << "   vec2 localST = GetPatchCoord(index).xy;\n";
-            break;            
+            break;
         }
 
         case HdSt_GeometricShader::PrimitiveType::PRIM_MESH_COARSE_QUADS:
         {
             // quad interpolation
             _procGS  << "void ProcessPrimvars(int index) {\n"
-                     << "   vec2 localST = vec2[](vec2(0,0), vec2(1,0), vec2(1,1), vec2(0,1))[index];\n";
-            break;            
+                     << "   vec2 lut[4] = vec2[4](vec2(0,0), vec2(1,0), vec2(1,1), vec2(0,1));\n"
+                     << "   vec2 localST = lut[index];\n";
+            break;
         }
 
         case HdSt_GeometricShader::PrimitiveType::PRIM_MESH_COARSE_TRIANGLES:
         {
             // barycentric interpolation
              _procGS  << "void ProcessPrimvars(int index) {\n"
-                      << "   vec2 localST = vec2[](vec2(0,0), vec2(1,0), vec2(0,1))[index];\n";
-            break;            
+                      << "   vec2 lut[3] = vec2[3](vec2(0,0), vec2(1,0), vec2(0,1));\n"
+                      << "   vec2 localST = lut[index];\n";
+            break;
         }
 
         default: // points, basis curves
@@ -2738,7 +2740,7 @@ HdSt_CodeGen::_GenerateShaderParameters()
             // vec4 HdGet_name(vec2 coord) { vec3 c = hd_sample_udim(coord);
             // c.z = texelFetch(sampler1d_name_layout, int(c.z), 0).x - 1;
             // if (c.z < -0.5) { return vec4(0, 0, 0, 0).xyz; } else {
-            // return texture(sampler2dArray_name, hd_sample_udim(coord)).xyz;}}
+            // return texture(sampler2dArray_name, c).xyz;}}
             accessors
                 << it->second.dataType
                 << " HdGet_" << it->second.name

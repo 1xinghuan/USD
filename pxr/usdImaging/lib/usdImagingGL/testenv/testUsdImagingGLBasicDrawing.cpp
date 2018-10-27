@@ -49,8 +49,6 @@
 #include "pxr/usdImaging/usdImaging/tokens.h"
 
 #include "pxr/usdImaging/usdImagingGL/gl.h"
-#include "pxr/usdImaging/usdImagingGL/hdEngine.h"
-#include "pxr/usdImaging/usdImagingGL/refEngine.h"
 
 #include <boost/shared_ptr.hpp>
 
@@ -100,10 +98,9 @@ My_TestGLDrawing::InitTest()
     _stage = UsdStage::Open(GetStageFilePath());
     SdfPathVector excludedPaths;
 
-    bool isEnabledHydra = (TfGetenv("HD_ENABLED", "1") == "1");
-    if (isEnabledHydra) {
+    if (UsdImagingGLEngine::IsHydraEnabled()) {
         std::cout << "Using HD Renderer.\n";
-        _engine.reset(new UsdImagingGLHdEngine(
+        _engine.reset(new UsdImagingGL(
             _stage->GetPseudoRoot().GetPath(), excludedPaths));
         if (!_GetRenderer().IsEmpty()) {
             if (!_engine->SetRendererPlugin(_GetRenderer())) {
@@ -117,7 +114,8 @@ My_TestGLDrawing::InitTest()
         }
     } else{
         std::cout << "Using Reference Renderer.\n"; 
-        _engine.reset(new UsdImagingGLRefEngine(excludedPaths));
+        _engine.reset(
+            new UsdImagingGL(_stage->GetPseudoRoot().GetPath(), excludedPaths));
     }
 
     std::cout << glGetString(GL_VENDOR) << "\n";
@@ -160,7 +158,7 @@ My_TestGLDrawing::InitTest()
     }
 
     if(IsEnabledTestLighting()) {
-        if(UsdImagingGL::IsEnabledHydra()) {
+        if(UsdImagingGLEngine::IsHydraEnabled()) {
             // set same parameter as GlfSimpleLightingContext::SetStateFromOpenGL
             // OpenGL defaults
             _lightingContext = GlfSimpleLightingContext::New();
@@ -248,22 +246,22 @@ My_TestGLDrawing::DrawTest(bool offscreen)
         if (*timeIt == -999) {
             time = UsdTimeCode::Default();
         }
-        UsdImagingGLEngine::RenderParams params;
+        UsdImagingGLRenderParams params;
         params.drawMode = GetDrawMode();
         params.enableLighting = IsEnabledTestLighting();
         params.enableIdRender = IsEnabledIdRender();
         params.frame = time;
         params.complexity = _GetComplexity();
         params.cullStyle = IsEnabledCullBackfaces() ?
-                            UsdImagingGLEngine::CULL_STYLE_BACK :
-                            UsdImagingGLEngine::CULL_STYLE_NOTHING;
+                            UsdImagingGLCullStyle::CULL_STYLE_BACK :
+                            UsdImagingGLCullStyle::CULL_STYLE_NOTHING;
 
         glViewport(0, 0, width, height);
 
         glEnable(GL_DEPTH_TEST);
 
         if(IsEnabledTestLighting()) {
-            if(UsdImagingGL::IsEnabledHydra()) {
+            if(UsdImagingGLEngine::IsHydraEnabled()) {
                 _engine->SetLightingState(_lightingContext);
             } else {
                 _engine->SetLightingStateFromOpenGL();

@@ -47,16 +47,18 @@ pxr_library(usdImagingGL
         drawModeAdapter
         engine
         gl
-        hdEngine
         hydraMaterialAdapter
         package
-        refEngine
+        renderParams
 
     PUBLIC_HEADERS
         api.h
+        rendererSettings.h
         version.h
 
     PRIVATE_CLASSES
+        hdEngine
+        legacyEngine
         textureUtils
 
     PRIVATE_HEADERS

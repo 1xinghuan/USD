@@ -59,9 +59,6 @@ typedef std::vector<UsdPrim> UsdPrimVector;
 class UsdImagingGLHdEngine : public UsdImagingGLEngine
 {
 public:
-    // Important! Call UsdImagingGLHdEngine::IsDefaultRendererPluginAvailable()
-    // before construction; if no plugins are available, the class will only
-    // get halfway constructed.
     USDIMAGINGGL_API
     UsdImagingGLHdEngine(const SdfPath& rootPath,
                        const SdfPathVector& excludedPaths,
@@ -69,32 +66,22 @@ public:
                        const SdfPath& delegateID = SdfPath::AbsoluteRootPath());
 
     USDIMAGINGGL_API
-    static bool IsDefaultRendererPluginAvailable();
-
-    USDIMAGINGGL_API
-    static TfToken GetDefaultRendererPluginId();
-
-    USDIMAGINGGL_API
     virtual ~UsdImagingGLHdEngine();
-
-    USDIMAGINGGL_API
-    HdRenderIndex *GetRenderIndex() const;
 
     USDIMAGINGGL_API
     virtual void InvalidateBuffers();
 
     USDIMAGINGGL_API
-    virtual void PrepareBatch(const UsdPrim& root, RenderParams params);
+    virtual void PrepareBatch(const UsdPrim& root, 
+        const UsdImagingGLRenderParams& params) override;
 
     USDIMAGINGGL_API
-    virtual void RenderBatch(const SdfPathVector& paths, RenderParams params);
+    virtual void RenderBatch(const SdfPathVector& paths, 
+        const UsdImagingGLRenderParams& params) override;
 
     USDIMAGINGGL_API
-    virtual void Render(const UsdPrim& root, RenderParams params);
-
-    // Core rendering function: just draw, don't update anything.
-    USDIMAGINGGL_API
-    void Render(RenderParams params);
+    virtual void Render(const UsdPrim& root, 
+        const UsdImagingGLRenderParams& params) override;
 
     USDIMAGINGGL_API
     virtual void SetCameraState(const GfMatrix4d& viewMatrix,
@@ -168,7 +155,7 @@ public:
         const GfMatrix4d &projectionMatrix,
         const GfMatrix4d &worldToLocalSpace,
         const UsdPrim& root, 
-        RenderParams params,
+        const UsdImagingGLRenderParams& params,
         GfVec3d *outHitPoint,
         SdfPath *outHitPrimPath = NULL,
         SdfPath *outHitInstancerPath = NULL,
@@ -181,7 +168,7 @@ public:
         const GfMatrix4d &projectionMatrix,
         const GfMatrix4d &worldToLocalSpace,
         const SdfPathVector& paths, 
-        RenderParams params,
+        const UsdImagingGLRenderParams& params,
         unsigned int pickResolution,
         PathTranslatorCallback pathTranslator,
         HitBatch *outHit);
@@ -189,26 +176,50 @@ public:
     USDIMAGINGGL_API
     virtual VtDictionary GetResourceAllocation() const;
 
+    USDIMAGINGGL_API
+    virtual UsdImagingGLRendererSettingsList GetRendererSettingsList() const;
+
+    USDIMAGINGGL_API
+    virtual VtValue GetRendererSetting(TfToken const& id) const;
+
+    USDIMAGINGGL_API
+    virtual void SetRendererSetting(TfToken const& id,
+                                    VtValue const& value);
+
+protected:
+
+    USDIMAGINGGL_API
+    HdRenderIndex *_GetRenderIndex() const override;
+
 private:
+
+    // Core rendering function: just draw, don't update anything.
+    virtual void _Render(const UsdImagingGLRenderParams& params);
+
 
     // These functions factor batch preparation into separate steps so they
     // can be reused by both the vectorized and non-vectorized API.
-    bool _CanPrepareBatch(const UsdPrim& root, const RenderParams& params);
-    void _PreSetTime(const UsdPrim& root, const RenderParams& params);
-    void _PostSetTime(const UsdPrim& root, const RenderParams& params);
+    bool _CanPrepareBatch(const UsdPrim& root, 
+        const UsdImagingGLRenderParams& params);
+    void _PreSetTime(const UsdPrim& root, 
+        const UsdImagingGLRenderParams& params);
+    void _PostSetTime(const UsdPrim& root, 
+        const UsdImagingGLRenderParams& params);
 
     // Create a hydra collection given root paths and render params.
     // Returns true if the collection was updated.
     static bool _UpdateHydraCollection(HdRprimCollection *collection,
                           SdfPathVector const& roots,
-                          UsdImagingGLEngine::RenderParams const& params,
+                          UsdImagingGLRenderParams const& params,
                           TfTokenVector *renderTags);
-    static HdxRenderTaskParams _MakeHydraRenderParams(
-                          UsdImagingGLEngine::RenderParams const& params);
+    static HdxRenderTaskParams _MakeHydraUsdImagingGLRenderParams(
+                          UsdImagingGLRenderParams const& params);
 
     // This function disposes of: the render index, the render plugin,
     // the task controller, and the usd imaging delegate.
     void _DeleteHydraResources();
+
+    static TfToken _GetDefaultRendererPluginId();
 
     HdEngine _engine;
 
@@ -229,6 +240,9 @@ private:
 
     // Data we want to live across render plugin switches:
     GfVec4f _selectionColor;
+
+    // Hold onto viewport dimensions for render delegate creation.
+    GfVec4d _viewport;
 
     SdfPath _rootPath;
     SdfPathVector _excludedPrimPaths;
