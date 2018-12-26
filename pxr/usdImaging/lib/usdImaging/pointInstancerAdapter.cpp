@@ -35,10 +35,11 @@
 #include "pxr/imaging/hd/renderIndex.h"
 #include "pxr/usd/sdf/schema.h"
 #include "pxr/usd/usd/primRange.h"
+#include "pxr/usd/usdGeom/imageable.h"
 #include "pxr/usd/usdGeom/pointInstancer.h"
 #include "pxr/usd/usdGeom/primvarsAPI.h"
-#include "pxr/usd/usdGeom/imageable.h"
 #include "pxr/usd/usdGeom/tokens.h"
+#include "pxr/usd/usdGeom/xformable.h"
 
 #include "pxr/base/tf/staticTokens.h"
 #include "pxr/base/tf/stringUtils.h"
@@ -70,6 +71,18 @@ TF_REGISTRY_FUNCTION(TfType)
 
 UsdImagingPointInstancerAdapter::~UsdImagingPointInstancerAdapter() 
 {
+}
+
+bool
+UsdImagingPointInstancerAdapter::ShouldCullChildren() const
+{
+    return true;
+}
+
+bool
+UsdImagingPointInstancerAdapter::IsInstancerAdapter() const
+{
+    return true;
 }
 
 SdfPath
@@ -303,6 +316,17 @@ UsdImagingPointInstancerAdapter::_PopulatePrototype(
                 instancerChain));
 
         if (!instanceProxyPrim) {
+            range.set_begin(++iter);
+            continue;
+        }
+
+        // Skip population of non-imageable prims.
+        if (UsdImagingPrimAdapter::ShouldCullSubtree(instanceProxyPrim)) {
+            TF_DEBUG(USDIMAGING_INSTANCER).Msg("[Instance PI] Discovery of new "
+                "prims at or below <%s> pruned by prim type (%s)\n",
+                iter->GetPath().GetText(), iter->GetTypeName().GetText());
+            iter.PruneChildren();
+            range.set_begin(++iter);
             continue;
         }
 
@@ -319,17 +343,11 @@ UsdImagingPointInstancerAdapter::_PopulatePrototype(
                     "In order to instance this prim, put the prim under an "
                     "Xform, and instance the Xform parent.",
                     iter->GetPath().GetText());
+            range.set_begin(++iter);
             continue;
         }
 
         if (adapter) {
-            if (adapter->IsPopulatedIndirectly()) {
-                // If "IsPopulatedIndirectly", don't populate this from
-                // traversal.
-                range.set_begin(++iter);
-                continue;
-            }
-
             primCount++;
 
             //
@@ -375,7 +393,7 @@ UsdImagingPointInstancerAdapter::_PopulatePrototype(
                 protoPath = adapter->Populate(populatePrim, index, &ctx);
             }
 
-            if (adapter->ShouldCullChildren(*iter)) {
+            if (adapter->ShouldCullChildren()) {
                 iter.PruneChildren();
             }
 
@@ -975,10 +993,6 @@ UsdImagingPointInstancerAdapter::ProcessPropertyChange(UsdPrim const& prim,
                                       SdfPath const& cachePath, 
                                       TfToken const& propertyName)
 {
-    // Blast everything.
-    return HdChangeTracker::AllDirty;
-    // XXX: Change processing needs to be routed through the adapter earlier,
-    // currently we don't see changes to the prototypes.
     if (IsChildPath(cachePath)) {
         _ProtoRprim const& rproto = _GetProtoRprim(prim.GetPath(), cachePath);
         if (!TF_VERIFY(rproto.adapter, "%s", cachePath.GetText())) {
@@ -987,11 +1001,31 @@ UsdImagingPointInstancerAdapter::ProcessPropertyChange(UsdPrim const& prim,
         if (!TF_VERIFY(rproto.paths.size() > 0, "%s", cachePath.GetText())) {
             return HdChangeTracker::AllDirty;
         }
-        return rproto.adapter->ProcessPropertyChange(
+
+        // XXX: Specifically disallow visibility and transform updates: in
+        // these cases, it's hard to tell which prims we should dirty but
+        // probably we need to dirty both prototype & instancer. This is a
+        // project for later. In the meantime, returning AllDirty causes
+        // a re-sync.
+        HdDirtyBits dirtyBits = rproto.adapter->ProcessPropertyChange(
             _GetProtoUsdPrim(rproto), cachePath, propertyName);
+
+        if (dirtyBits & (HdChangeTracker::DirtyTransform |
+                         HdChangeTracker::DirtyVisibility)) {
+            return HdChangeTracker::AllDirty;
+        }
+        return dirtyBits;
     }
 
-    // Blast everything. This will trigger a prim resync; see ProcessPrimResync.
+    if (propertyName == UsdGeomTokens->positions ||
+        propertyName == UsdGeomTokens->orientations ||
+        propertyName == UsdGeomTokens->scales) {
+        return HdChangeTracker::DirtyPrimvar;
+    }
+
+    // XXX: Treat indices & transform changes as re-sync. In theory, we
+    // should only need to re-sync for changes to "prototypes", but we're a
+    // ways off...
     return HdChangeTracker::AllDirty;
 }
 

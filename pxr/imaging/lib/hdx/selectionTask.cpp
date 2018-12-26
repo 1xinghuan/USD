@@ -43,32 +43,28 @@ typedef std::vector<HdBufferSourceSharedPtr> HdBufferSourceSharedPtrVector;
 
 HdxSelectionTask::HdxSelectionTask(HdSceneDelegate* delegate,
                                    SdfPath const& id)
-    : HdSceneTask(delegate, id)
+    : HdTask(id)
     , _lastVersion(-1)
     , _hasSelection(false)
+    , _params({false, GfVec4f(), GfVec4f()})
     , _selOffsetBar(nullptr)
     , _selUniformBar(nullptr)
     , _selPointColorsBar(nullptr)
 {
-    _params = {false, GfVec4f(), GfVec4f()};
 }
 
-void
-HdxSelectionTask::_Execute(HdTaskContext* ctx)
+HdxSelectionTask::~HdxSelectionTask()
 {
-    HD_TRACE_FUNCTION();
-    HF_MALLOC_TAG_FUNCTION();
-
-    // Note that selectionTask comes after renderTask.
 }
 
 void
-HdxSelectionTask::_Sync(HdTaskContext* ctx)
+HdxSelectionTask::Sync(HdSceneDelegate* delegate,
+                       HdTaskContext* ctx,
+                       HdDirtyBits* dirtyBits)
 {
     HD_TRACE_FUNCTION();
 
     SdfPath const& id = GetId();
-    HdSceneDelegate* delegate = GetDelegate();
     HdRenderIndex& index = delegate->GetRenderIndex();
     HdChangeTracker& changeTracker = index.GetChangeTracker();
     HdDirtyBits bits = changeTracker.GetTaskDirtyBits(id);
@@ -77,7 +73,7 @@ HdxSelectionTask::_Sync(HdTaskContext* ctx)
 
     bool paramsChanged = bits & HdChangeTracker::DirtyParams;
     if (paramsChanged) {
-        _GetSceneDelegateValue(HdTokens->params, &_params);
+        _GetTaskParams(delegate, &_params);
     }
 
     HdxSelectionTrackerSharedPtr sel;
@@ -171,7 +167,19 @@ HdxSelectionTask::_Sync(HdTaskContext* ctx)
         (*ctx)[HdxTokens->selectionUniforms] = VtValue();
         (*ctx)[HdxTokens->selectionPointColors] = VtValue();
     }
+
+    *dirtyBits = HdChangeTracker::Clean;
 }
+
+void
+HdxSelectionTask::Execute(HdTaskContext* ctx)
+{
+    HD_TRACE_FUNCTION();
+    HF_MALLOC_TAG_FUNCTION();
+
+    // Note that selectionTask comes after renderTask.
+}
+
 
 // -------------------------------------------------------------------------- //
 // VtValue requirements

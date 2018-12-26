@@ -1,5 +1,5 @@
 //
-// Copyright 2016 Pixar
+// Copyright 2018 Pixar
 //
 // Licensed under the Apache License, Version 2.0 (the "Apache License")
 // with the following modification; you may not use this file except in
@@ -21,20 +21,21 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#include "pxr/imaging/hd/patchIndex.h"
+#include "pxr/imaging/hdSt/debugCodes.h"
+
+#include "pxr/base/tf/debug.h"
+#include "pxr/base/tf/registryManager.h"
 
 PXR_NAMESPACE_OPEN_SCOPE
 
 
-std::ostream&
-operator<<(std::ostream&o, const Hd_BSplinePatchIndex &patchIndex)
+TF_REGISTRY_FUNCTION(TfDebug)
 {
-    o << '[';
-    for (size_t i = 0; i < Hd_BSplinePatchIndex::dimension; ++i) {
-        o << patchIndex[i] << ", ";
-    }
-    o << ']';
-    return o;
+    TF_DEBUG_ENVIRONMENT_SYMBOL(HDST_MATERIAL_ADDED,
+        "Report when a material is added");
+
+    TF_DEBUG_ENVIRONMENT_SYMBOL(HDST_MATERIAL_REMOVED,
+        "Report when a material is removed");
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

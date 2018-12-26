@@ -1,5 +1,5 @@
 //
-// Copyright 2016 Pixar
+// Copyright 2018 Pixar
 //
 // Licensed under the Apache License, Version 2.0 (the "Apache License")
 // with the following modification; you may not use this file except in
@@ -21,50 +21,22 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef HD_PATCH_INDEX_H
-#define HD_PATCH_INDEX_H
+#ifndef HDST_DEBUGCODES_H
+#define HDST_DEBUGCODES_H
 
 #include "pxr/pxr.h"
-#include "pxr/imaging/hd/api.h"
-
-#include <cstddef>
-#include <iostream>
+#include "pxr/imaging/hd/version.h"
+#include "pxr/base/tf/debug.h"
 
 PXR_NAMESPACE_OPEN_SCOPE
 
 
-/// \class Hd_PatchIndex
-///
-/// N integers array for storing patch indices.
-///
-template <int N>
-class Hd_PatchIndex {
-public:
-    typedef int ScalarType;
-    static const size_t dimension = N;
-
-    /// Equality comparison.
-    bool operator==(Hd_PatchIndex const &other) const {
-        for (int i = 0 ; i < dimension; ++i)
-            if (_indices[i] != other._indices[i]) return false;
-        return true;
-    }
-    bool operator!=(Hd_PatchIndex const &other) const {
-        return !(*this == other);
-    }
-
-    ScalarType &operator [](size_t i) { return _indices[i]; }
-    ScalarType const &operator [](size_t i) const { return _indices[i]; }
-
-private:
-    int _indices[N];
-};
-typedef Hd_PatchIndex<16> Hd_BSplinePatchIndex;
-
-HD_API
-std::ostream& operator<<(std::ostream&, const Hd_BSplinePatchIndex&);
+TF_DEBUG_CODES(
+    HDST_MATERIAL_ADDED,
+    HDST_MATERIAL_REMOVED
+);
 
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif  // HD_PATCH_INDEX_H
+#endif // HDST_DEBUGCODES_H

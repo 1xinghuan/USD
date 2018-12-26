@@ -27,7 +27,7 @@
 #include "pxr/pxr.h"
 #include "pxr/imaging/hdx/api.h"
 #include "pxr/imaging/hdx/compositor.h"
-#include "pxr/imaging/hd/task.h"
+#include "pxr/imaging/hdx/progressiveTask.h"
 
 #include <boost/shared_ptr.hpp>
 
@@ -44,26 +44,27 @@ class HdRenderBuffer;
 /// GL buffer, possibly with a "colorizing" step (for example, mapping
 /// normals to RGB, or texture coords to RG).
 ///
-class HdxColorizeTask : public HdSceneTask
+class HdxColorizeTask : public HdxProgressiveTask
 {
 public:
     HDX_API
     HdxColorizeTask(HdSceneDelegate* delegate, SdfPath const& id);
 
     HDX_API
-    ~HdxColorizeTask();
+    virtual ~HdxColorizeTask();
 
     /// Hooks for progressive rendering.
-    bool IsConverged() const;
+    virtual bool IsConverged() const override;
 
-protected:
     /// Execute the colorize task
     HDX_API
-    virtual void _Execute(HdTaskContext* ctx);
+    virtual void Execute(HdTaskContext* ctx) override;
 
     /// Sync the render pass resources
     HDX_API
-    virtual void _Sync(HdTaskContext* ctx);
+    virtual void Sync(HdSceneDelegate* delegate,
+                      HdTaskContext* ctx,
+                      HdDirtyBits* dirtyBits) override;
 
 private:
     // Incoming data
@@ -77,13 +78,17 @@ private:
     bool _converged;
 
     HdxCompositor _compositor;
+
+    HdxColorizeTask() = delete;
+    HdxColorizeTask(const HdxColorizeTask &) = delete;
+    HdxColorizeTask &operator =(const HdxColorizeTask &) = delete;
 };
 
 /// \class HdxColorizeTaskParams
 ///
 /// ColorizeTask parameters.
 ///
-struct HdxColorizeTaskParams : public HdTaskParams
+struct HdxColorizeTaskParams
 {
     HdxColorizeTaskParams()
         : aovName()

@@ -47,24 +47,52 @@ PXR_NAMESPACE_OPEN_SCOPE
 HdStShaderCodeSharedPtr HdxRenderSetupTask::_overrideShader;
 
 HdxRenderSetupTask::HdxRenderSetupTask(HdSceneDelegate* delegate, SdfPath const& id)
-    : HdSceneTask(delegate, id)
+    : HdTask(id)
+    , _renderPassState()
     , _colorRenderPassShader()
     , _idRenderPassShader()
     , _viewport()
     , _cameraId()
-    , _renderTags()    
+    , _renderTags()
+    , _aovBindings()
 {
     _colorRenderPassShader.reset(
         new HdStRenderPassShader(HdxPackageRenderPassShader()));
     _idRenderPassShader.reset(
         new HdStRenderPassShader(HdxPackageRenderPassIdShader()));
+}
 
-    HdRenderIndex &index = delegate->GetRenderIndex();
-    _renderPassState = index.GetRenderDelegate()->CreateRenderPassState();
+HdxRenderSetupTask::~HdxRenderSetupTask()
+{
 }
 
 void
-HdxRenderSetupTask::_Execute(HdTaskContext* ctx)
+HdxRenderSetupTask::Sync(HdSceneDelegate* delegate,
+                         HdTaskContext* ctx,
+                         HdDirtyBits* dirtyBits)
+{
+    HD_TRACE_FUNCTION();
+    HF_MALLOC_TAG_FUNCTION();
+
+    if ((*dirtyBits) & HdChangeTracker::DirtyParams) {
+        HdxRenderTaskParams params;
+
+        if (!_GetTaskParams(delegate, &params)) {
+            return;
+        }
+
+        SyncParams(delegate, params);
+    }
+
+    SyncAovBindings(delegate);
+    SyncCamera(delegate);
+    SyncRenderPassState(delegate);
+
+    *dirtyBits = HdChangeTracker::Clean;
+}
+
+void
+HdxRenderSetupTask::Execute(HdTaskContext* ctx)
 {
     HD_TRACE_FUNCTION();
     HF_MALLOC_TAG_FUNCTION();
@@ -74,34 +102,14 @@ HdxRenderSetupTask::_Execute(HdTaskContext* ctx)
     (*ctx)[HdxTokens->renderTags] = VtValue(_renderTags);
 }
 
-void
-HdxRenderSetupTask::_Sync(HdTaskContext* ctx)
-{
-    HD_TRACE_FUNCTION();
-    HF_MALLOC_TAG_FUNCTION();
-
-    HdDirtyBits bits = _GetTaskDirtyBits();
-
-    if (bits & HdChangeTracker::DirtyParams) {
-        HdxRenderTaskParams params;
-
-        if (!_GetSceneDelegateValue(HdTokens->params, &params)) {
-            return;
-        }
-
-        SyncParams(params);
-    }
-
-    SyncAovBindings();
-    SyncCamera();
-    SyncRenderPassState();
-}
 
 void
-HdxRenderSetupTask::SyncRenderPassState()
+HdxRenderSetupTask::SyncRenderPassState(HdSceneDelegate* delegate)
 {
-    _renderPassState->Sync(
-        GetDelegate()->GetRenderIndex().GetResourceRegistry());
+    HdRenderPassStateSharedPtr &renderPassState = _GetRenderPassState(delegate);
+
+    renderPassState->Sync(
+        delegate->GetRenderIndex().GetResourceRegistry());
 }
 
 void
@@ -124,54 +132,51 @@ HdxRenderSetupTask::_SetHdStRenderPassState(HdxRenderTaskParams const &params,
 }
 
 void
-HdxRenderSetupTask::SyncParams(HdxRenderTaskParams const &params)
+HdxRenderSetupTask::SyncParams(HdSceneDelegate* delegate,
+                               HdxRenderTaskParams const &params)
 {
-    _renderPassState->SetOverrideColor(params.overrideColor);
-    _renderPassState->SetWireframeColor(params.wireframeColor);
-    _renderPassState->SetMaskColor(params.maskColor);
-    _renderPassState->SetIndicatorColor(params.indicatorColor);
-    _renderPassState->SetPointColor(params.pointColor);
-    _renderPassState->SetPointSize(params.pointSize);
-    _renderPassState->SetPointSelectedSize(params.pointSelectedSize);
-    _renderPassState->SetLightingEnabled(params.enableLighting);
-    _renderPassState->SetAlphaThreshold(params.alphaThreshold);
-    _renderPassState->SetTessLevel(params.tessLevel);
-    _renderPassState->SetDrawingRange(params.drawingRange);
-    _renderPassState->SetCullStyle(params.cullStyle);
+    HdRenderPassStateSharedPtr &renderPassState = _GetRenderPassState(delegate);
 
-    // XXX TODO: Handle params.geomStyle
-    // XXX TODO: Handle params.complexity
-    // XXX TODO: Handle params visability (hullVisibility, surfaceVisibility)
+    renderPassState->SetOverrideColor(params.overrideColor);
+    renderPassState->SetWireframeColor(params.wireframeColor);
+    renderPassState->SetMaskColor(params.maskColor);
+    renderPassState->SetIndicatorColor(params.indicatorColor);
+    renderPassState->SetPointColor(params.pointColor);
+    renderPassState->SetPointSize(params.pointSize);
+    renderPassState->SetPointSelectedSize(params.pointSelectedSize);
+    renderPassState->SetLightingEnabled(params.enableLighting);
+    renderPassState->SetAlphaThreshold(params.alphaThreshold);
+    renderPassState->SetCullStyle(params.cullStyle);
 
     // depth bias
-    _renderPassState->SetDepthBiasUseDefault(params.depthBiasUseDefault);
-    _renderPassState->SetDepthBiasEnabled(params.depthBiasEnable);
-    _renderPassState->SetDepthBias(params.depthBiasConstantFactor,
-                               params.depthBiasSlopeFactor);
-    _renderPassState->SetDepthFunc(params.depthFunc);
+    renderPassState->SetDepthBiasUseDefault(params.depthBiasUseDefault);
+    renderPassState->SetDepthBiasEnabled(params.depthBiasEnable);
+    renderPassState->SetDepthBias(params.depthBiasConstantFactor,
+                                  params.depthBiasSlopeFactor);
+    renderPassState->SetDepthFunc(params.depthFunc);
 
     // stencil
-    _renderPassState->SetStencilEnabled(params.stencilEnable);
-    _renderPassState->SetStencil(params.stencilFunc, params.stencilRef,
+    renderPassState->SetStencilEnabled(params.stencilEnable);
+    renderPassState->SetStencil(params.stencilFunc, params.stencilRef,
             params.stencilMask, params.stencilFailOp, params.stencilZFailOp,
             params.stencilZPassOp);
 
     // blend
-    _renderPassState->SetBlendEnabled(params.blendEnable);
-    _renderPassState->SetBlend(
+    renderPassState->SetBlendEnabled(params.blendEnable);
+    renderPassState->SetBlend(
             params.blendColorOp,
             params.blendColorSrcFactor, params.blendColorDstFactor,
             params.blendAlphaOp,
             params.blendAlphaSrcFactor, params.blendAlphaDstFactor);
-    _renderPassState->SetBlendConstantColor(params.blendConstantColor);
+    renderPassState->SetBlendConstantColor(params.blendConstantColor);
     
     // alpha to coverage
     // XXX:  Long-term Alpha to Coverage will be a render style on the
     // task.  However, as there isn't a fallback we current force it
     // enabled, unless a client chooses to manage the setting itself (aka usdImaging).
-    _renderPassState->SetAlphaToCoverageUseDefault(
-        GetDelegate()->IsEnabled(HdxOptionTokens->taskSetAlphaToCoverage));
-    _renderPassState->SetAlphaToCoverageEnabled(
+    renderPassState->SetAlphaToCoverageUseDefault(
+        delegate->IsEnabled(HdxOptionTokens->taskSetAlphaToCoverage));
+    renderPassState->SetAlphaToCoverageEnabled(
         !TfDebug::IsEnabled(HDX_DISABLE_ALPHA_TO_COVERAGE));
 
     _viewport = params.viewport;
@@ -180,17 +185,17 @@ HdxRenderSetupTask::SyncParams(HdxRenderTaskParams const &params)
     _aovBindings = params.aovBindings;
 
     if (HdStRenderPassState* extendedState =
-            dynamic_cast<HdStRenderPassState*>(_renderPassState.get())) {
+            dynamic_cast<HdStRenderPassState*>(renderPassState.get())) {
         _SetHdStRenderPassState(params, extendedState);
     }
 }
 
 void
-HdxRenderSetupTask::SyncAovBindings()
+HdxRenderSetupTask::SyncAovBindings(HdSceneDelegate* delegate)
 {
     // Walk the aov bindings, resolving the render index references as they're
     // encountered.
-    const HdRenderIndex &renderIndex = GetDelegate()->GetRenderIndex();
+    const HdRenderIndex &renderIndex = delegate->GetRenderIndex();
     HdRenderPassAovBindingVector aovBindings = _aovBindings;
     for (size_t i = 0; i < aovBindings.size(); ++i)
     {
@@ -200,13 +205,15 @@ HdxRenderSetupTask::SyncAovBindings()
                 aovBindings[i].renderBufferId));
         }
     }
-    _renderPassState->SetAovBindings(aovBindings);
+
+    HdRenderPassStateSharedPtr &renderPassState = _GetRenderPassState(delegate);
+    renderPassState->SetAovBindings(aovBindings);
 }
 
 void
-HdxRenderSetupTask::SyncCamera()
+HdxRenderSetupTask::SyncCamera(HdSceneDelegate* delegate)
 {
-    const HdRenderIndex &renderIndex = GetDelegate()->GetRenderIndex();
+    const HdRenderIndex &renderIndex = delegate->GetRenderIndex();
     const HdCamera *camera = static_cast<const HdCamera *>(
         renderIndex.GetSprim(HdPrimTypeTokens->camera, _cameraId));
 
@@ -232,8 +239,9 @@ HdxRenderSetupTask::SyncCamera()
             vClipPlanes.Get<HdRenderPassState::ClipPlanesVector>();
 
         // sync render pass state
-        _renderPassState->SetCamera(modelView, projection, _viewport);
-        _renderPassState->SetClipPlanes(clipPlanes);
+        HdRenderPassStateSharedPtr &renderPassState = _GetRenderPassState(delegate);
+        renderPassState->SetCamera(modelView, projection, _viewport);
+        renderPassState->SetClipPlanes(clipPlanes);
     }
 }
 
@@ -250,6 +258,18 @@ HdxRenderSetupTask::_CreateOverrideShader()
                     HdStPackageFallbackSurfaceShader()))));
         }
     }
+}
+
+
+HdRenderPassStateSharedPtr &
+HdxRenderSetupTask::_GetRenderPassState(HdSceneDelegate* delegate)
+{
+    if (!_renderPassState) {
+        HdRenderIndex &index = delegate->GetRenderIndex();
+        _renderPassState = index.GetRenderDelegate()->CreateRenderPassState();
+    }
+
+    return _renderPassState;
 }
 
 // --------------------------------------------------------------------------- //
@@ -269,8 +289,6 @@ std::ostream& operator<<(std::ostream& out, const HdxRenderTaskParams& pv)
         << pv.enableLighting << " "
         << pv.enableIdRender << " "
         << pv.alphaThreshold << " "
-        << pv.tessLevel << " "
-        << pv.drawingRange << " "
         << pv.enableSceneMaterials << " "
         << pv.depthBiasUseDefault << " "
         << pv.depthBiasEnable << " "
@@ -293,10 +311,6 @@ std::ostream& operator<<(std::ostream& out, const HdxRenderTaskParams& pv)
         << pv.blendConstantColor << " "
         << pv.blendEnable << " "
         << pv.cullStyle << " "
-        << pv.geomStyle << " "
-        << pv.complexity << " "
-        << pv.hullVisibility << " "
-        << pv.surfaceVisibility << " "
         << pv.camera << " "
         << pv.viewport << " ";
         for (auto const& a : pv.aovBindings) {
@@ -320,8 +334,6 @@ bool operator==(const HdxRenderTaskParams& lhs, const HdxRenderTaskParams& rhs)
            lhs.enableLighting          == rhs.enableLighting          &&
            lhs.enableIdRender          == rhs.enableIdRender          &&
            lhs.alphaThreshold          == rhs.alphaThreshold          &&
-           lhs.tessLevel               == rhs.tessLevel               &&
-           lhs.drawingRange            == rhs.drawingRange            &&
            lhs.enableSceneMaterials    == rhs.enableSceneMaterials    &&
            lhs.depthBiasUseDefault     == rhs.depthBiasUseDefault     &&
            lhs.depthBiasEnable         == rhs.depthBiasEnable         &&
@@ -344,10 +356,6 @@ bool operator==(const HdxRenderTaskParams& lhs, const HdxRenderTaskParams& rhs)
            lhs.blendConstantColor      == rhs.blendConstantColor      &&
            lhs.blendEnable             == rhs.blendEnable             &&
            lhs.cullStyle               == rhs.cullStyle               &&
-           lhs.geomStyle               == rhs.geomStyle               &&
-           lhs.complexity              == rhs.complexity              &&
-           lhs.hullVisibility          == rhs.hullVisibility          &&
-           lhs.surfaceVisibility       == rhs.surfaceVisibility       &&
            lhs.aovBindings             == rhs.aovBindings             &&
            lhs.camera                  == rhs.camera                  &&
            lhs.viewport                == rhs.viewport                &&
