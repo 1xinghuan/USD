@@ -176,13 +176,13 @@ _GatherShadingParameters(
             for (const SdfPath& sourcePath : sourcePaths) {
 
                 // We only care about connections to output properties
-                if (not sourcePath.IsPropertyPath())
+                if (! sourcePath.IsPropertyPath())
                     continue;
 
                 UsdShadeConnectableAPI source =
                         UsdShadeConnectableAPI::Get(prim.GetStage(),
                                                     sourcePath.GetPrimPath());
-                if (not static_cast<bool>(source))
+                if (! static_cast<bool>(source))
                     continue;
 
                 TfToken sourceName;
