@@ -387,22 +387,6 @@ GusdMeshWrapper::refine(
                       &gtPointAttrs,
                       &gtUniformAttrs,
                       &gtDetailAttrs );
-
-        if( gtVertexAttrs->entries() > 0 ) {
-            if( reverseWindingOrder ) {
-                // Construct an index array which will be used to lookup vertex 
-                // attributes in the correct order.
-                GT_Int32Array* vertexIndirect
-                    = new GT_Int32Array(gtIndicesHandle->entries(), 1);
-                GT_DataArrayHandle vertexIndirectHandle(vertexIndirect);
-                for(int i=0; i<gtIndicesHandle->entries(); ++i) {
-                    vertexIndirect->set(i, i);     
-                }
-                _reverseWindingOrder(vertexIndirect, gtVertexCounts );
-
-                gtVertexAttrs = gtVertexAttrs->createIndirect(vertexIndirect);
-            }
-        }
     }
 
     else {
@@ -463,6 +447,22 @@ GusdMeshWrapper::refine(
                     &gtDetailAttrs );
             }
         }
+    }
+
+    if( gtVertexAttrs->entries() > 0 ) {
+	if( reverseWindingOrder ) {
+	    // Construct an index array which will be used to lookup vertex
+	    // attributes in the correct order.
+	    GT_Int32Array* vertexIndirect
+		= new GT_Int32Array(gtIndicesHandle->entries(), 1);
+	    GT_DataArrayHandle vertexIndirectHandle(vertexIndirect);
+	    for(int i=0; i<gtIndicesHandle->entries(); ++i) {
+		vertexIndirect->set(i, i);
+	    }
+	    _reverseWindingOrder(vertexIndirect, gtVertexCounts );
+
+	    gtVertexAttrs = gtVertexAttrs->createIndirect(vertexIndirect);
+	}
     }
 
     // build GT_Primitive
@@ -585,6 +585,15 @@ GusdMeshWrapper::refine(
             UT_ASSERT(index->entries() == weight->entries()*2);
             subdPrim->appendIntTag("crease", GT_DataArrayHandle(index));
             subdPrim->appendRealTag("crease", GT_DataArrayHandle(weight));
+        }
+
+        // Holes
+        UsdAttribute holeIndicesAttr = m_usdMesh.GetHoleIndicesAttr();
+        VtIntArray holeIndices;
+        holeIndicesAttr.Get(&holeIndices, m_time);
+        if (!holeIndices.empty()) {
+            subdPrim->appendIntTag("hole", GT_DataArrayHandle(
+                                       new GusdGT_VtArray<int>(holeIndices)));
         }
 
         // Interpolation boundaries
@@ -932,9 +941,11 @@ updateFromGTPrim(const GT_PrimitiveHandle& sourcePrim,
         updateAttributeFromGTPrim( GT_OWNER_INVALID, "facevertexindices",
                                    houVertexList, usdAttr, topologyTime );
 
-        // Creases
+        // Subdiv tags
         if(const GT_PrimSubdivisionMesh* subdMesh
            = dynamic_cast<const GT_PrimSubdivisionMesh*>(gtMesh)) {
+
+            // Creases
             if (const GT_PrimSubdivisionMesh::Tag *tag =
                 subdMesh->findTag("crease")) {
                 const GT_Int32Array *index =
@@ -947,7 +958,7 @@ updateFromGTPrim(const GT_PrimitiveHandle& sourcePrim,
                     UT_ASSERT(index->entries() == weight->entries()*2);
 
                     // Convert to vt arrays
-                    const int numCreases = weight->entries();
+                    const size_t numCreases = weight->entries();
                     VtIntArray vtCreaseIndices;
                     VtIntArray vtCreaseLengths;
                     VtFloatArray vtCreaseSharpnesses;
@@ -973,6 +984,23 @@ updateFromGTPrim(const GT_PrimitiveHandle& sourcePrim,
                     creaseIndicesAttr.Set(vtCreaseIndices, m_time);
                     creaseLengthsAttr.Set(vtCreaseLengths, m_time);
                     creaseSharpnessesAttr.Set(vtCreaseSharpnesses, m_time);
+                }
+            }
+
+            // Holes
+            if (const GT_PrimSubdivisionMesh::Tag* tag =
+                subdMesh->findTag("hole")) {
+                
+                if (const GT_Int32Array* indices =
+                    dynamic_cast<GT_Int32Array*>(tag->intArray().get())) {
+                    
+                    // Convert to vt arrays
+                    const size_t numIndices = indices->entries();
+                    VtIntArray vtHoleIndices(numIndices);
+                    UTconvertArray(vtHoleIndices.data(),
+                                   indices->data(), numIndices);
+
+                    m_usdMesh.GetHoleIndicesAttr().Set(vtHoleIndices, m_time);
                 }
             }
         }

@@ -200,6 +200,13 @@ UsdImagingPrimAdapter::MarkMaterialDirty(UsdPrim const& prim,
 }
 
 /*virtual*/
+void
+UsdImagingPrimAdapter::InvokeComputation(SdfPath const& computationPath,
+                                         HdExtComputationContext* context)
+{
+}
+
+/*virtual*/
 SdfPath
 UsdImagingPrimAdapter::GetInstancer(SdfPath const &cachePath)
 {
@@ -232,12 +239,9 @@ UsdImagingPrimAdapter::SamplePrimvar(
 
     // Try as USD primvar.
     UsdGeomPrimvarsAPI primvars(usdPrim);
-    UsdGeomPrimvar pv = primvars.GetPrimvar(key);
-    if (!pv) {
-        // Try as inherited primvar.
-        pv = primvars.FindInheritedPrimvar(key);
-    }
-    if (pv) {
+    UsdGeomPrimvar pv = primvars.FindPrimvarWithInheritance(key);
+
+    if (pv && pv.HasValue()) {
         if (pv.ValueMightBeTimeVarying()) {
             size_t numSamples = std::min(maxNumSamples,
                                          configuredSampleTimes.size());

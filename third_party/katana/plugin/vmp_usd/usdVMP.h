@@ -42,13 +42,13 @@
 #include "pxr/usd/usd/stage.h"
 #include "pxr/usdImaging/usdImagingGL/engine.h"
 
-#include "katanaPluginApi/FnViewerModifier.h"
+#include <FnViewerModifier/plugin/FnViewerModifier.h>
 #ifdef _WIN32
 #   include <FnPlatform/Windows.h>
 #endif
 #include <FnAttribute/FnGroupBuilder.h>
 #include <FnAttribute/FnAttribute.h>
-#include "katanaPluginApi/FnViewerModifierInput.h"
+#include <FnViewerModifier/plugin/FnViewerModifierInput.h>
 #include <FnLogging/FnLogging.h>
 
 #include "debugCodes.h"

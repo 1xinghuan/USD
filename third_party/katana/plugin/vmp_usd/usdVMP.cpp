@@ -31,6 +31,7 @@
 
 #include "pxr/base/tf/envSetting.h"
 #include "pxr/base/arch/systemInfo.h"
+#include "pxr/imaging/glf/contextCaps.h"
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
@@ -65,6 +66,7 @@ USDVMP::USDVMP(FnKat::GroupAttribute args) :
     TF_DEBUG(KATANA_DEBUG_VMP_USD).Msg("%s @ %p\n",
                 TF_FUNC_NAME().c_str(), this);
     GlfGlewInit();
+    GlfContextCaps::InitInstance();
 }
 
 USDVMP::~USDVMP()

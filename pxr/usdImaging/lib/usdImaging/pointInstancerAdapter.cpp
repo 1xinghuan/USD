@@ -950,7 +950,8 @@ UsdImagingPointInstancerAdapter::UpdateForTime(UsdPrim const& prim,
             for (auto const &pv: primvars.GetPrimvars()) {
                 TfToken const& interp = pv.GetInterpolation();
                 if (interp != UsdGeomTokens->constant &&
-                    interp != UsdGeomTokens->uniform) {
+                    interp != UsdGeomTokens->uniform &&
+                    pv.HasAuthoredValue()) {
                     HdInterpolation interp = HdInterpolationInstance;
                     _ComputeAndMergePrimvar(
                         prim, cachePath, pv, time, valueCache, &interp);
@@ -1905,6 +1906,25 @@ UsdImagingPointInstancerAdapter::PopulateSelection(
         added = true;
     }
     return added;
+}
+
+/*virtual*/
+HdVolumeFieldDescriptorVector
+UsdImagingPointInstancerAdapter::GetVolumeFieldDescriptors(
+    UsdPrim const& usdPrim,
+    SdfPath const &id,
+    UsdTimeCode time) const
+{
+    if (IsChildPath(id)) {
+        // Delegate to prototype adapter and USD prim.
+        _ProtoRprim const& rproto = _GetProtoRprim(usdPrim.GetPath(), id);
+        UsdPrim protoPrim = _GetProtoUsdPrim(rproto);
+        return rproto.adapter->GetVolumeFieldDescriptors(
+            protoPrim, id, time);
+    } else {
+        return UsdImagingPrimAdapter::GetVolumeFieldDescriptors(
+            usdPrim, id, time);
+    }
 }
 
 /*virtual*/

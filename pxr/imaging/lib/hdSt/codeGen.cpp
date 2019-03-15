@@ -39,7 +39,7 @@
 #include "pxr/imaging/hd/tokens.h"
 #include "pxr/imaging/hd/vtBufferSource.h"
 
-#include "pxr/imaging/glf/glslfx.h"
+#include "pxr/imaging/hio/glslfx.h"
 
 #include "pxr/base/tf/iterator.h"
 #include "pxr/base/tf/staticTokens.h"
@@ -126,7 +126,7 @@ std::string
 _GetPtexTextureShaderSource()
 {
     static std::string source =
-        GlfGLSLFX(HdStPackagePtexTextureShader()).GetSource(
+        HioGlslfx(HdStPackagePtexTextureShader()).GetSource(
             _tokens->ptexTextureSampler);
     return source;
 }
@@ -1626,7 +1626,7 @@ HdSt_CodeGen::_GenerateDrawingCoord()
     if (_metaData.drawingCoordIBinding.binding.IsValid()) {
         _genVS << "  for (int i = 0; i < HD_INSTANCER_NUM_LEVELS; ++i) {\n"
                << "    dc.instanceCoords[i] = drawingCoordI[i] \n"
-               << "      + GetInstanceIndex().indices[i+1]; \n"
+               << "      + dc.instanceIndex[i+1]; \n"
                << "  }\n";
     }
 
@@ -1695,7 +1695,7 @@ HdSt_CodeGen::_GenerateConstantPrimvar()
           mat4 transform;
           mat4 transformInverse;
           mat4 instancerTransform[2];
-          vec4 color;
+          vec3 displayColor;
           vec4 primID;
       };
       // bindless
@@ -1709,8 +1709,8 @@ HdSt_CodeGen::_GenerateConstantPrimvar()
       mat4 HdGet_transform(int localIndex) {
           return constantData0[GetConstantCoord()].transform;
       }
-      vec4 HdGet_color(int localIndex) {
-          return constantData0[GetConstantCoord()].color;
+      vec3 HdGet_displayColor(int localIndex) {
+          return constantData0[GetConstantCoord()].displayColor;
       }
 
     */
@@ -1886,15 +1886,15 @@ HdSt_CodeGen::_GenerateElementPrimvar()
 
       // --------- uniform primvar declaration ---------
       struct ElementData0 {
-          vec4 color;
+          vec3 displayColor;
       };
       layout (std430, binding=?) buffer buffer0 {
           ElementData0 elementData0[];
       };
 
       // ---------uniform primvar data accessor ---------
-      vec4 HdGet_color(int localIndex) {
-          return elementData0[GetAggregatedElementID()].color;
+      vec3 HdGet_displayColor(int localIndex) {
+          return elementData0[GetAggregatedElementID()].displayColor;
       }
 
     */
@@ -2178,7 +2178,11 @@ HdSt_CodeGen::_GenerateElementPrimvar()
             << "  if (primitiveEdgeID == -1) {\n"
             << "    return -1;\n"
             << "  }\n"
-            << "  return HdGet_edgeIndices()[abs(primitiveEdgeID)];\n;"
+            << "  "
+            << _GetUnpackedType(_metaData.edgeIndexBinding.dataType, false)
+            << " edgeIndices = HdGet_edgeIndices();\n"
+            << "  int coord = abs(primitiveEdgeID);\n"
+            << "  return edgeIndices[coord];\n"
             << "}\n";
 
         // Primitive EdgeID getter

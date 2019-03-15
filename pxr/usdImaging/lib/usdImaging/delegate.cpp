@@ -33,6 +33,7 @@
 #include "pxr/imaging/hd/basisCurves.h"
 #include "pxr/imaging/hd/basisCurvesTopology.h"
 #include "pxr/imaging/hd/enums.h"
+#include "pxr/imaging/hd/extComputation.h"
 #include "pxr/imaging/hd/material.h"
 #include "pxr/imaging/hd/mesh.h"
 #include "pxr/imaging/hd/meshTopology.h"
@@ -1120,12 +1121,19 @@ UsdImagingDelegate::_ResyncPrim(SdfPath const& rootPath,
                 // get an adapter); resync the containing mesh.
                 if (iter->IsA<UsdGeomSubset>()) {
                     UsdPrim parentPrim = iter->GetParent();
-                    TF_DEBUG(USDIMAGING_CHANGES)
-                        .Msg("[Resync Prim]: Populating <%s> on behalf "
-                             "of subset <%s>\n",
-                             parentPrim.GetPath().GetText(),
-                             iter->GetPath().GetText());
-                    proxy->Repopulate(parentPrim.GetPath());
+                    _PrimInfo *parentPrimInfo =
+                        GetPrimInfo(parentPrim.GetPath());
+                    if (parentPrimInfo != nullptr &&
+                        TF_VERIFY(parentPrimInfo->adapter, "%s\n",
+                                  parentPrim.GetPath().GetText())) {
+                        TF_DEBUG(USDIMAGING_CHANGES)
+                            .Msg("[Resync Prim]: Resyncing parent <%s> on "
+                                 "behalf of subset <%s>\n",
+                                 parentPrim.GetPath().GetText(),
+                                 iter->GetPath().GetText());
+                        parentPrimInfo->adapter->ProcessPrimResync(
+                            parentPrim.GetPath(), proxy);
+                    }
                     iter.PruneChildren();
                     continue;
                 }
@@ -2336,12 +2344,20 @@ UsdImagingDelegate::Get(SdfPath const& id, TfToken const& key)
                 VtVec3fArray vec;
                 value = VtValue(vec);
             }
-        } else if (key == HdTokens->color) {
+        } else if (key == HdTokens->displayColor) {
             // XXX: Getting all primvars here when we only want color is wrong.
             _UpdateSingleValue(usdPath,HdChangeTracker::DirtyPrimvar);
             if (!TF_VERIFY(_valueCache.ExtractColor(usdPath, &value))){
-                VtVec4fArray vec(1);
-                vec.push_back(GfVec4f(.5,.5,.5,1.0));
+                VtVec3fArray vec(1);
+                vec.push_back(GfVec3f(.5,.5,.5));
+                value = VtValue(vec);
+            }
+        } else if (key == HdTokens->displayOpacity) {
+            // XXX: Getting all primvars here when we only want opacity is bad.
+            _UpdateSingleValue(usdPath,HdChangeTracker::DirtyPrimvar);
+            if (!TF_VERIFY(_valueCache.ExtractOpacity(usdPath, &value))){
+                VtFloatArray vec(1);
+                vec.push_back(1.0f);
                 value = VtValue(vec);
             }
         } else if (key == HdTokens->widths) {
@@ -2424,17 +2440,18 @@ UsdImagingDelegate::GetPrimvarDescriptors(SdfPath const& id,
 {
     HD_TRACE_FUNCTION();
     SdfPath usdPath = GetPathForUsd(id);
-    // Filter the stored primvars to just ones of the requested type.
     HdPrimvarDescriptorVector primvars;
     HdPrimvarDescriptorVector allPrimvars;
+    // We expect to populate an entry always (i.e., we don't use a slow path
+    // fetch)
     if (!TF_VERIFY(_valueCache.FindPrimvars(usdPath, &allPrimvars), 
                    "<%s> interpolation: %s", usdPath.GetText(),
                    TfEnum::GetName(interpolation).c_str())) {
         return primvars;
     }
-    TF_VERIFY(!allPrimvars.empty(),
-              "No primvars found for <%s>\n", usdPath.GetText());
+    // It's valid to have no authored primvars (they could be computed)
     for (HdPrimvarDescriptor const& pv: allPrimvars) {
+        // Filter the stored primvars to just ones of the requested type.
         if (pv.interpolation == interpolation) {
             primvars.push_back(pv);
         }
@@ -2819,14 +2836,10 @@ UsdImagingDelegate::GetMaterialPrimvars(SdfPath const &materialId)
     }
 
     SdfPath usdPath = GetPathForUsd(materialId);
+    TfTokenVector materialPrimvars;
+    _valueCache.FindMaterialPrimvars(usdPath, &materialPrimvars);
 
-    VtValue vtMaterialPrimvars;
-    if (_valueCache.FindMaterialPrimvars(usdPath, &vtMaterialPrimvars)) {
-        if (vtMaterialPrimvars.IsHolding<TfTokenVector>()) {
-            return vtMaterialPrimvars.Get<TfTokenVector>();
-        }
-    }
-    return TfTokenVector();
+    return materialPrimvars;
 }
 
 VtDictionary
@@ -2857,6 +2870,161 @@ UsdImagingDelegate::GetMaterialMetadata(SdfPath const &materialId)
     }
 
     return value.GetWithDefault<VtDictionary>();
+}
+
+TfTokenVector
+UsdImagingDelegate::GetExtComputationSceneInputNames(
+    SdfPath const& computationId)
+{
+    HD_TRACE_FUNCTION();
+
+    SdfPath usdPath = GetPathForUsd(computationId);
+
+    TfTokenVector inputNames;
+    if (!_valueCache.ExtractExtComputationSceneInputNames(
+            usdPath, &inputNames)) {
+
+        TF_DEBUG(HD_SAFE_MODE).Msg("WARNING: Slow extComputation input "
+                                   "descriptor fetch for %s\n", 
+                                   computationId.GetText());
+        
+        _UpdateSingleValue(usdPath, HdExtComputation::DirtyInputDesc);
+        TF_VERIFY(_valueCache.ExtractExtComputationSceneInputNames(
+                      usdPath, &inputNames));
+    }
+
+    return inputNames;
+}
+
+HdExtComputationInputDescriptorVector
+UsdImagingDelegate::GetExtComputationInputDescriptors(
+    SdfPath const& computationId)
+{
+    HD_TRACE_FUNCTION();
+
+    SdfPath usdPath = GetPathForUsd(computationId);
+
+    HdExtComputationInputDescriptorVector inputs;
+    if (!_valueCache.ExtractExtComputationInputs(usdPath, &inputs)) {
+
+        TF_DEBUG(HD_SAFE_MODE).Msg("WARNING: Slow extComputation input "
+                                   "descriptor fetch for %s\n", 
+                                   computationId.GetText());
+        
+        _UpdateSingleValue(usdPath, HdExtComputation::DirtyInputDesc);
+        TF_VERIFY(_valueCache.ExtractExtComputationInputs(usdPath, &inputs));
+    }
+
+    return inputs;
+}
+
+HdExtComputationOutputDescriptorVector
+UsdImagingDelegate::GetExtComputationOutputDescriptors(
+    SdfPath const& computationId)
+{
+    HD_TRACE_FUNCTION();
+
+    SdfPath usdPath = GetPathForUsd(computationId);
+
+    HdExtComputationOutputDescriptorVector outputs;
+    if (!_valueCache.ExtractExtComputationOutputs(usdPath, &outputs)) {
+
+        TF_DEBUG(HD_SAFE_MODE).Msg("WARNING: Slow extComputation output "
+                                   "descriptor fetch for %s\n", 
+                                   computationId.GetText());
+        
+        _UpdateSingleValue(usdPath, HdExtComputation::DirtyOutputDesc);
+        TF_VERIFY(_valueCache.ExtractExtComputationOutputs(usdPath, &outputs));
+    }
+
+    return outputs;
+}
+
+HdExtComputationPrimvarDescriptorVector
+UsdImagingDelegate::GetExtComputationPrimvarDescriptors(
+    SdfPath const& computationId,
+    HdInterpolation interpolation)
+{
+    HD_TRACE_FUNCTION();
+    SdfPath usdPath = GetPathForUsd(computationId);
+
+    HdExtComputationPrimvarDescriptorVector allPrimvars;
+    // We don't require an entry to be populated.
+    _valueCache.FindExtComputationPrimvars(usdPath, &allPrimvars);
+    
+    // Don't use a verify below because it is often the case that there are
+    // no computed primvars on an rprim.
+    if (allPrimvars.empty()) {
+        return allPrimvars;
+    }
+
+    HdExtComputationPrimvarDescriptorVector primvars;
+    for (const auto& pv : allPrimvars) {
+        // Filter the stored primvars to just ones of the requested type.
+        if (pv.interpolation == interpolation) {
+            primvars.push_back(pv);
+        }
+    }
+    return primvars;
+}
+
+VtValue
+UsdImagingDelegate::GetExtComputationInput(SdfPath const& computationId,
+                                           TfToken const& input)
+{
+    SdfPath usdPath = GetPathForUsd(computationId);
+    VtValue value;
+
+    if (!_valueCache.ExtractExtComputationInput(usdPath, input, &value)) {
+        TF_DEBUG(HD_SAFE_MODE).Msg(
+            "WARNING: Slow fetch for token %s for computation %s\n", 
+                            input.GetText(), computationId.GetText());
+        if (input == HdTokens->dispatchCount) {
+            _UpdateSingleValue(usdPath, HdExtComputation::DirtyDispatchCount);
+        } else if (input == HdTokens->elementCount) {
+            _UpdateSingleValue(usdPath, HdExtComputation::DirtyElementCount);
+        } else {
+            _UpdateSingleValue(usdPath, HdExtComputation::DirtySceneInput);
+        }
+
+        TF_VERIFY(_valueCache.ExtractExtComputationInput(usdPath, input, 
+                                                         &value));
+    }
+    return value;
+}
+
+std::string
+UsdImagingDelegate::GetExtComputationKernel(SdfPath const& computationId)
+{
+    HD_TRACE_FUNCTION();
+    
+    std::string kernel;
+    if (!computationId.IsEmpty()) {
+
+        SdfPath usdPath = GetPathForUsd(computationId);
+        if (!_valueCache.ExtractExtComputationKernel(usdPath, &kernel)) {
+            TF_DEBUG(HD_SAFE_MODE).Msg(
+                "WARNING: Slow extComputation kernel fetch for %s\n",
+                computationId.GetText());
+            _UpdateSingleValue(usdPath, HdExtComputation::DirtyKernel);
+            TF_VERIFY(_valueCache.ExtractExtComputationKernel(
+                          usdPath, &kernel));
+        }
+    }
+    return kernel;
+}
+
+void
+UsdImagingDelegate::InvokeExtComputation(SdfPath const& computationId,
+                                         HdExtComputationContext *context)
+{
+    _PrimInfo *primInfo = GetPrimInfo(computationId);
+
+    _PrimInfoMap::iterator it = _primInfoMap.find(computationId);
+    if (TF_VERIFY(primInfo, "%s\n", computationId.GetText()) &&
+        TF_VERIFY(primInfo->adapter, "%s\n", computationId.GetText())) {
+        primInfo->adapter->InvokeComputation(computationId, context);
+    }
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

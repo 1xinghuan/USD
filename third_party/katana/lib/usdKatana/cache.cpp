@@ -474,7 +474,14 @@ UsdKatanaCache::_SetMutedLayers(
     
     // use a better regex library?
     regex_t regex;
-    regcomp(&regex, layerRegex.c_str(), REG_EXTENDED);
+    if (regcomp(&regex, layerRegex.c_str(), REG_EXTENDED))
+    {
+        TF_WARN("UsdKatanaCache: Invalid ignoreLayerRegex value: %s",
+                layerRegex.c_str());
+        regexIsEmpty = true;
+    }
+
+
     regmatch_t* rmatch = 0;
 
     TF_FOR_ALL(stageLayer, stageLayers)
@@ -670,10 +677,6 @@ UsdStageRefPtr UsdKatanaCache::GetStage(
         std::string const& ignoreLayerRegex,
         bool forcePopulate)
 {
-    bool givenAbsPath = TfStringStartsWith(fileName, "/");
-    const std::string contextPath = givenAbsPath ? 
-                                    TfGetPathName(fileName) : ArchGetCwd();
-
     TF_DEBUG(USDKATANA_CACHE_STAGE).Msg(
             "{USD STAGE CACHE} Creating and caching UsdStage for "
             "given filePath @%s@, which resolves to @%s@\n", 
@@ -747,10 +750,6 @@ UsdKatanaCache::GetUncachedStage(std::string const& fileName,
                             std::string const& ignoreLayerRegex,
                             bool forcePopulate)
 {
-    bool givenAbsPath = TfStringStartsWith(fileName, "/");
-    const std::string contextPath = givenAbsPath ? 
-                                    TfGetPathName(fileName) : ArchGetCwd();
-
     TF_DEBUG(USDKATANA_CACHE_STAGE).Msg(
             "{USD STAGE CACHE} Creating UsdStage for "
             "given filePath @%s@, which resolves to @%s@\n", 

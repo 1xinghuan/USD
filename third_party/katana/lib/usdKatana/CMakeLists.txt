@@ -1,5 +1,10 @@
 set(PXR_PACKAGE usdKatana)
 
+set(vtKatana_LIBRARY "")
+if (NOT ${KATANA_API_VERSION} VERSION_LESS "3.0.0")
+    set(vtKatana_LIBRARY "vtKatana")
+endif()
+
 pxr_shared_library(${PXR_PACKAGE}
     LIBRARIES
         plug
@@ -21,17 +26,20 @@ pxr_shared_library(${PXR_PACKAGE}
         usdUI
         usdUtils
         cameraUtil
+        hio
+        glf
         katanaAttrfncApi
+        ${vtKatana_LIBRARY}
         katanaOpApi
         katanaPluginApi
-        ${Boost_CHRONO_LIBRARY} 
-        ${Boost_DATE_TIME_LIBRARY} 
-        ${Boost_SYSTEM_LIBRARY} 
-        ${Boost_THREAD_LIBRARY} 
+        ${Boost_CHRONO_LIBRARY}
+        ${Boost_DATE_TIME_LIBRARY}
+        ${Boost_SYSTEM_LIBRARY}
+        ${Boost_THREAD_LIBRARY}
 
     PUBLIC_HEADERS
         api.h
-        
+
     PUBLIC_CLASSES
         attrMap
         baseMaterialHelpers
@@ -85,7 +93,7 @@ pxr_shared_library(${PXR_PACKAGE}
 
 target_compile_definitions(${PXR_PACKAGE}
     PRIVATE
-    
+
     FNASSET_STATIC
     FNATTRIBUTE_STATIC
     FNATTRIBUTEFUNCTION_STATIC

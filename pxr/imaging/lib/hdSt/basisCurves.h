@@ -117,12 +117,14 @@ protected:
 private:
     enum DrawingCoord {
         HullTopology = HdDrawingCoord::CustomSlotsBegin,
+        PointsTopology,
         InstancePrimvar  // has to be at the very end
     };
 
     enum DirtyBits : HdDirtyBits {
         DirtyIndices        = HdChangeTracker::CustomBitsBegin,
-        DirtyHullIndices    = (DirtyIndices       << 1)
+        DirtyHullIndices    = (DirtyIndices       << 1),
+        DirtyPointsIndices  = (DirtyHullIndices   << 1)
     };
 
     // When processing primvars, these will get set to if we determine that
@@ -136,6 +138,8 @@ private:
     bool _SupportsRefinement(int refineLevel);
     bool _SupportsUserWidths(HdStDrawItem* drawItem);
     bool _SupportsUserNormals(HdStDrawItem* drawItem);
+    
+    const TfToken& _GetMaterialTag(const HdRenderIndex &renderIndex) const;
 
     void _UpdateDrawItem(HdSceneDelegate *sceneDelegate,
                          HdStDrawItem *drawItem,

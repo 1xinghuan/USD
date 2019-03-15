@@ -31,6 +31,7 @@
 #include "usdMaya/shadingModeExporterContext.h"
 #include "usdMaya/transformWriter.h"
 #include "usdMaya/translatorMaterial.h"
+#include "usdMaya/util.h"
 
 #include "usdMaya/chaser.h"
 #include "usdMaya/chaserRegistry.h"
@@ -62,6 +63,7 @@
 
 #include <maya/MAnimControl.h>
 #include <maya/MComputation.h>
+#include <maya/MDistance.h>
 #include <maya/MFnDagNode.h>
 #include <maya/MFnRenderLayer.h>
 #include <maya/MGlobal.h>
@@ -384,23 +386,10 @@ UsdMaya_WriteJob::_BeginWriting(const std::string& fileName, bool append)
 
                 // Write out data (non-animated/default values).
                 if (const auto& usdPrim = primWriter->GetUsdPrim()) {
-                    if (mJobCtx.mArgs.stripNamespaces) {
-                        auto foundPair = mUsdPathToDagPathMap.find(usdPrim.GetPath());
-                        if (foundPair != mUsdPathToDagPathMap.end()){
-                            TF_RUNTIME_ERROR(
-                                    "Multiple dag nodes map to the same prim "
-                                    "path after stripping namespaces: %s - %s",
-                                    foundPair->second.fullPathName().asChar(),
-                                    primWriter->GetDagPath().fullPathName()
-                                        .asChar());
-                            return false;
-                        }
-                        // Note that mUsdPathToDagPathMap is _only_ used for
-                        // stripping namespaces, so we only need to populate it
-                        // when stripping namespaces. (This is different from
-                        // mDagPathToUsdPathMap!)
-                        mUsdPathToDagPathMap[usdPrim.GetPath()] =
-                                primWriter->GetDagPath();
+                    if (!_CheckNameClashes(
+                            usdPrim.GetPath(), primWriter->GetDagPath()))
+                    {
+                        return false;
                     }
 
                     primWriter->Write(UsdTimeCode::Default());
@@ -524,6 +513,21 @@ UsdMaya_WriteJob::_FinishWriting()
         upAxis = UsdGeomTokens->z;
     }
     UsdGeomSetStageUpAxis(mJobCtx.mStage, upAxis);
+
+    // XXX Currently all distance values are written directly to USD, and will
+    // be in centimeters (Maya's internal unit) despite what the users UIUnit
+    // preference is. Future work could include converting exported values to 
+    // the UIUnit setting and writing that unit to metadata. 
+    MDistance::Unit mayaInternalUnit = MDistance::internalUnit();
+    if (mayaInternalUnit != MDistance::uiUnit()) {
+        TF_WARN("Distance unit conversion is not yet supported. "
+            "All distance values will be exported in Maya's internal "
+            "distance unit.");
+    }
+    UsdGeomSetStageMetersPerUnit(
+        mJobCtx.mStage, 
+        UsdMayaUtil::ConvertMDistanceUnitToUsdGeomLinearUnit(mayaInternalUnit));
+
     if (usdRootPrim){
         // We have already decided above that 'usdRootPrim' is the important
         // prim for the export... usdVariantRootPrimPath
@@ -801,6 +805,37 @@ void UsdMaya_WriteJob::_PostCallback()
     }
 }
 
+bool UsdMaya_WriteJob::_CheckNameClashes(const SdfPath &path, const MDagPath &dagPath)
+{
+    if (!mJobCtx.mArgs.stripNamespaces) {
+        return true;
+    }
+    auto foundPair = mUsdPathToDagPathMap.find(path);
+    if (foundPair != mUsdPathToDagPathMap.end()){
+        if (mJobCtx.mArgs.mergeTransformAndShape) {
+            // Shape should not conflict with xform
+            MDagPath other = foundPair->second;
+            MDagPath self = dagPath;
+            other.extendToShape();
+            self.extendToShape();
+            if (other == self) {
+                return true;
+            }
+        }
+        TF_RUNTIME_ERROR(
+            "Multiple dag nodes map to the same prim "
+            "path after stripping namespaces: %s - %s",
+            foundPair->second.fullPathName().asChar(),
+            dagPath.fullPathName().asChar());
+        return false;
+    }
+    // Note that mUsdPathToDagPathMap is _only_ used for
+    // stripping namespaces, so we only need to populate it
+    // when stripping namespaces. (This is different from
+    // mDagPathToUsdPathMap!)
+    mUsdPathToDagPathMap[path] = dagPath;
+    return true;
+}
 
 
 PXR_NAMESPACE_CLOSE_SCOPE

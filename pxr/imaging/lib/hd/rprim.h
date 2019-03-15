@@ -191,6 +191,12 @@ public:
     /// this identifier.
     SdfPath const& GetMaterialId() const { return _materialId; }
 
+    /// The MaterialTag allows rprims to be organized into different
+    /// collections based on properties of the prim's material.
+    /// E.g. A renderer may wish to organize opaque and translucent prims 
+    /// into different collections so they can be rendered seperately.
+    TfToken const& GetMaterialTag() const { return _sharedData.materialTag; }
+
     HdReprSelector const& GetReprSelector() const {
         return _authoredReprSelector;
     }
@@ -337,7 +343,14 @@ protected:
             TF_CODING_ERROR("Repr %s not found", reprToken.GetText());
             return DescArray();
         }
-        void Append(TfToken const &reprToken, DescArray descs) {
+        void AddOrUpdate(TfToken const &reprToken, DescArray descs) {
+            for (auto& config : _configs) {
+                if (config.first == reprToken) {
+                    // Overrwrite the existing entry.
+                    config.second = descs;
+                    return;
+                }
+            }
             _configs.push_back(std::make_pair(reprToken, descs));
         }
         std::vector<std::pair<TfToken, DescArray> > _configs;

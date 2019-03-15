@@ -561,9 +561,13 @@ HdRenderIndex::_ConfigureReprs()
                                          HdMeshReprDescTokens->surfaceShader,
                                          /*flatShadingEnabled=*/false,
                                          /*blendWireframeColor=*/true));
+    HdMesh::ConfigureRepr(HdReprTokens->points,
+                          HdMeshReprDesc(HdMeshGeomStylePoints,
+                                         HdCullStyleNothing,
+                                         HdMeshReprDescTokens->pointColor,
+                                         /*flatShadingEnabled=*/false,
+                                         /*blendWireframeColor=*/false));
 
-    // TODO: Port over wire on surf geometry shader from internal code base
-    // (internal pixar bug 129550)
     HdBasisCurves::ConfigureRepr(HdReprTokens->hull,
                                  HdBasisCurvesGeomStylePatch);
     HdBasisCurves::ConfigureRepr(HdReprTokens->smoothHull,
@@ -578,6 +582,8 @@ HdRenderIndex::_ConfigureReprs()
                                  HdBasisCurvesGeomStyleWire);
     HdBasisCurves::ConfigureRepr(HdReprTokens->refinedWireOnSurf,
                                  HdBasisCurvesGeomStylePatch);
+    HdBasisCurves::ConfigureRepr(HdReprTokens->points,
+                                 HdBasisCurvesGeomStylePoints);
 
     HdPoints::ConfigureRepr(HdReprTokens->hull,
                             HdPointsGeomStylePoints);
@@ -592,6 +598,8 @@ HdRenderIndex::_ConfigureReprs()
     HdPoints::ConfigureRepr(HdReprTokens->refinedWire,
                             HdPointsGeomStylePoints);
     HdPoints::ConfigureRepr(HdReprTokens->refinedWireOnSurf,
+                            HdPointsGeomStylePoints);
+    HdPoints::ConfigureRepr(HdReprTokens->points,
                             HdPointsGeomStylePoints);
 }
 // -------------------------------------------------------------------------- //
@@ -613,9 +621,18 @@ _DrawItemFilterPredicate(const SdfPath &rprimID, const void *predicateParam)
     const HdRprimCollection &collection = filterParam->collection;
     const HdRenderIndex *renderIndex    = filterParam->renderIndex;
 
-   if (collection.HasRenderTag(renderIndex->GetRenderTag(rprimID))) {
-       return true;
-   }
+    if (collection.HasRenderTag(renderIndex->GetRenderTag(rprimID))) {
+        // Filter out rprims that do not match the collection's materialTag.
+        // E.g. We may want to gather only opaque or translucent prims.
+        // An empty materialTag on collection means: ignore material-tags.
+        // This is important for tasks such as the selection-task which wants
+        // to ignore materialTags and receive all prims in its collection.
+        TfToken const& collectionMatTag = collection.GetMaterialTag();
+        if (collectionMatTag.IsEmpty() ||
+            renderIndex->GetMaterialTag(rprimID) == collectionMatTag) {
+            return true;
+        }
+    }
 
    return false;
 }
@@ -686,6 +703,17 @@ HdRenderIndex::GetRenderTag(SdfPath const& id) const
     }
 
     return info->rprim->GetRenderTag(info->sceneDelegate);
+}
+
+TfToken
+HdRenderIndex::GetMaterialTag(SdfPath const& id) const
+{
+    _RprimInfo const* info = TfMapLookupPtr(_rprimMap, id);
+    if (info == nullptr) {
+        return HdMaterialTagTokens->defaultMaterialTag;
+    }
+
+    return info->rprim->GetMaterialTag();
 }
 
 SdfPathVector
@@ -1364,6 +1392,10 @@ HdRenderIndex::InsertInstancer(HdSceneDelegate* delegate,
     HdInstancer *instancer =
         _renderDelegate->CreateInstancer(delegate, id, parentId);
 
+    if (instancer == nullptr) {
+        return;
+    }
+
     _instancerMap[id] = instancer;
     _tracker.InstancerInserted(id);
 }
@@ -1550,11 +1582,11 @@ HdRenderIndex::_AppendDrawItems(
                     const HdRprim::HdDrawItemPtrVector* drawItems =
                         rprim->GetDrawItems(reprToken);
 
-                    TF_VERIFY(drawItems);
-
-                    resultDrawItems.insert( resultDrawItems.end(),
-                                            drawItems->begin(),
-                                            drawItems->end() );
+                    if (TF_VERIFY(drawItems)) {
+                        resultDrawItems.insert( resultDrawItems.end(),
+                                                drawItems->begin(),
+                                                drawItems->end() );
+                    }
                 }
             }
         }

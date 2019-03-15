@@ -59,7 +59,7 @@ from common import (UIBaseColors, UIPropertyValueSourceColors, UIFonts,
                     GetInstanceIdForIndex,
                     ResetSessionVisibility, InvisRootPrims, GetAssetCreationTime,
                     PropertyViewIndex, PropertyViewIcons, PropertyViewDataRoles, 
-                    RenderModes, ShadedRenderModes,
+                    RenderModes, ColorCorrectionModes, ShadedRenderModes,
                     PickModes, SelectionHighlightModes, CameraMaskModes,
                     PropTreeWidgetTypeIsRel, PrimNotFoundException,
                     GetRootLayerStackInfo, HasSessionVis, GetEnclosingModelPrim,
@@ -380,7 +380,8 @@ class AppController(QtCore.QObject):
 
             # read the stage here
             stage = self._openStage(
-                self._parserData.usdFile, self._parserData.populationMask)
+                self._parserData.usdFile, self._parserData.sessionLayer,
+                self._parserData.populationMask)
             if not stage:
                 sys.exit(0)
 
@@ -579,6 +580,15 @@ class AppController(QtCore.QObject):
                 self._ui.actionHidden_Surface_Wireframe)
             for action in self._renderModeActions:
                 self._ui.renderModeActionGroup.addAction(action)
+
+            self._ui.colorCorrectionActionGroup = QtWidgets.QActionGroup(self)
+            self._ui.colorCorrectionActionGroup.setExclusive(True)
+            self._colorCorrectionActions = (
+                self._ui.actionNoColorCorrection,
+                self._ui.actionSRGBColorCorrection,
+                self._ui.actionOpenColorIO)
+            for action in self._colorCorrectionActions:
+                self._ui.colorCorrectionActionGroup.addAction(action)
 
             # XXX This should be a validator in ViewSettingsDataModel.
             if self._dataModel.viewSettings.renderMode not in RenderModes:
@@ -850,6 +860,9 @@ class AppController(QtCore.QObject):
 
             self._ui.renderModeActionGroup.triggered.connect(self._changeRenderMode)
 
+            self._ui.colorCorrectionActionGroup.triggered.connect(
+                self._changeColorCorrection)
+
             self._ui.pickModeActionGroup.triggered.connect(self._changePickMode)
 
             self._ui.selHighlightModeActionGroup.triggered.connect(
@@ -1060,6 +1073,7 @@ class AppController(QtCore.QObject):
 
         # configure render plugins after stageView initialized its renderer.
         self._configureRendererPlugins()
+        self._configureColorManagement()
 
         if self._mallocTags == 'stageAndImaging':
             DumpMallocTags(self._dataModel.stage,
@@ -1080,7 +1094,7 @@ class AppController(QtCore.QObject):
         if self._printTiming:
             t.PrintTime("'%s'" % msg)
 
-    def _openStage(self, usdFilePath, populationMaskPaths):
+    def _openStage(self, usdFilePath, sessionFilePath, populationMaskPaths):
 
         def _GetFormattedError(reasons=[]):
             err = ("Error: Unable to open stage '{0}'\n".format(usdFilePath))
@@ -1108,14 +1122,30 @@ class AppController(QtCore.QObject):
                     [err.commentary.strip() for err in e.args]))
                 sys.exit(1)
 
+            if sessionFilePath:
+                try:
+                    sessionLayer = Sdf.Layer.Find(sessionFilePath)
+                    if sessionLayer:
+                        sessionLayer.Reload()
+                    else:
+                        sessionLayer = Sdf.Layer.FindOrOpen(sessionFilePath)
+                except Tf.ErrorException as e:
+                    sys.stderr.write(_GetFormattedError(
+                        [err.commentary.strip() for err in e.args]))
+                    sys.exit(1)
+            else:
+                sessionLayer = Sdf.Layer.CreateAnonymous()
+
             if popMask:
                 for p in populationMaskPaths:
                     popMask.Add(p)
-                stage = Usd.Stage.OpenMasked(layer, 
+                stage = Usd.Stage.OpenMasked(layer,
+                                             sessionLayer,
                                              self._resolverContextFn(usdFilePath),
                                              popMask, loadSet)
             else:
                 stage = Usd.Stage.Open(layer,
+                                       sessionLayer,
                                        self._resolverContextFn(usdFilePath), 
                                        loadSet)
 
@@ -1481,6 +1511,11 @@ class AppController(QtCore.QObject):
             if isinstance(widget, QtWidgets.QLineEdit):
                 widget.setText(widget.defValue)
 
+    def _configureColorManagement(self):
+        enableMenu = (not self._noRender and 
+                      UsdImagingGL.Engine.IsColorCorrectionCapable())
+        self._ui.menuColorCorrection.setEnabled(enableMenu)
+
     # Topology-dependent UI changes
     def _reloadVaryingUI(self):
 
@@ -1768,31 +1803,30 @@ class AppController(QtCore.QObject):
             return
         self._ui.frameSlider.retreatFrame()
 
-    def _findIndexOfFieldContents(self, field):
-        # don't convert string to float directly because of rounding error
-        frameString = str(field.text())
+    def _findClosestFrameIndex(self, timeSample):
+        """Find the closest frame index for the given `timeSample`.
 
-        if frameString.count(".") == 0:
-            frameString += ".0"
-        elif frameString[-1] == ".":
-            frameString += "0"
+        Args:
+            timeSample (float): A time sample value.
 
-        field.setText(frameString)
+        Returns:
+            int: The closest matching frame index or 0 if one cannot be
+            found.
+        """
+        closestIndex = int((timeSample - self._timeSamples[0]) / self.step)
 
-        # Find the index of the closest valid frame
-        dist = None
-        closestIndex = Usd.TimeCode.Default()
+        # Bounds checking
+        # 0 <= closestIndex <= number of time samples - 1
+        closestIndex = max(0, closestIndex)
+        closestIndex = min(len(self._timeSamples) - 1, closestIndex)
 
-        for i in range(len(self._timeSamples)):
-            newDist = abs(self._timeSamples[i] - float(frameString))
-            if dist is None or newDist < dist:
-                dist = newDist
-                closestIndex = i
         return closestIndex
 
     def _rangeBeginChanged(self):
-        self.realStartTimeCode = float(self._ui.rangeBegin.text())
-        self._UpdateTimeSamples(resetStageDataOnly=False)
+        value = float(self._ui.rangeBegin.text())
+        if value != self.realStartTimeCode:
+            self.realStartTimeCode = value
+            self._UpdateTimeSamples(resetStageDataOnly=False)
 
     def _stepSizeChanged(self):
         stepStr = self._ui.stepSize.text()
@@ -1800,11 +1834,14 @@ class AppController(QtCore.QObject):
         self._UpdateTimeSamples(resetStageDataOnly=False)
 
     def _rangeEndChanged(self):
-        self.realEndTimeCode = float(self._ui.rangeEnd.text())
-        self._UpdateTimeSamples(resetStageDataOnly=False)
+        value = float(self._ui.rangeEnd.text())
+        if value != self.realEndTimeCode:
+            self.realEndTimeCode = value
+            self._UpdateTimeSamples(resetStageDataOnly=False)
 
     def _frameStringChanged(self):
-        indexOfFrame = self._findIndexOfFieldContents(self._ui.frameField)
+        timeSample = float(self._ui.frameField.text())
+        indexOfFrame = self._findClosestFrameIndex(timeSample)
 
         if (indexOfFrame != Usd.TimeCode.Default()):
             self.setFrame(indexOfFrame, forceUpdate=True)
@@ -2071,6 +2108,9 @@ class AppController(QtCore.QObject):
     def _changeRenderMode(self, mode):
         self._dataModel.viewSettings.renderMode = str(mode.text())
 
+    def _changeColorCorrection(self, mode):
+        self._dataModel.viewSettings.colorCorrectionMode = str(mode.text())
+
     def _changePickMode(self, mode):
         self._dataModel.viewSettings.pickMode = str(mode.text())
 
@@ -2267,13 +2307,22 @@ class AppController(QtCore.QObject):
             t.PrintTime('tear down the UI')
 
     def _openFile(self):
-        (filename, _) = QtWidgets.QFileDialog.getOpenFileName(self._mainWindow, "Select file",".")
+        extensions = Sdf.FileFormat.FindAllFileFormatExtensions()
+        builtInFiles = lambda f: f.startswith(".usd")
+        notBuiltInFiles = lambda f: not f.startswith(".usd")
+        extensions = filter(builtInFiles, extensions) + filter(notBuiltInFiles, extensions)
+        fileFilter = "USD Compatible Files (" + " ".join("*." + e for e in extensions) + ")" 
+        (filename, _) = QtWidgets.QFileDialog.getOpenFileName(
+            self._mainWindow,
+            caption="Select file",
+            dir=".",
+            filter=fileFilter,
+            selectedFilter=fileFilter)
+
         if len(filename) > 0:
-
             self._parserData.usdFile = str(filename)
-            self._reopenStage()
-
             self._mainWindow.setWindowTitle(filename)
+            self._reopenStage()
 
     def _getSaveFileName(self, caption, recommendedFilename):
         (saveName, _) = QtWidgets.QFileDialog.getSaveFileName(
@@ -2355,6 +2404,9 @@ class AppController(QtCore.QObject):
         QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.BusyCursor)
 
         try:
+            # Pause the stage view while we update
+            self._stageView.setUpdatesEnabled(False)
+
             # Clear out any Usd objects that may become invalid.
             self._dataModel.selection.clear()
             self._currentSpec = None
@@ -2364,7 +2416,8 @@ class AppController(QtCore.QObject):
             # while trying to open another stage.
             self._closeStage()
             stage = self._openStage(
-                self._parserData.usdFile, self._parserData.populationMask)
+                self._parserData.usdFile, self._parserData.sessionLayer,
+                self._parserData.populationMask)
             # We need this for layers which were cached in memory but changed on
             # disk. The additional Reload call should be cheap when nothing
             # actually changed.
@@ -2377,6 +2430,7 @@ class AppController(QtCore.QObject):
 
             self._stepSizeChanged()
             self._stepSizeChanged()
+            self._stageView.setUpdatesEnabled(True)
         except Exception as err:
             self.statusMessage('Error occurred reopening Stage: %s' % err)
             traceback.print_exc()
@@ -2738,8 +2792,7 @@ class AppController(QtCore.QObject):
             # Create a new item.  If we want its children we obviously
             # have to create those too.
             children = self._getFilteredChildren(prim)
-            item = PrimViewItem(prim, self, len(children) != 0, 
-                                parent=self._ui.primView)
+            item = PrimViewItem(prim, self, len(children) != 0)
             self._primToItemMap[prim] = item
             self._populateChildren(item, depth, maxDepth, children)
             # Push the item after the children so ancestors are processed
@@ -3010,21 +3063,17 @@ class AppController(QtCore.QObject):
             for prim in self._dataModel.selection.getPrims()]
         if len(selectedItems) > 0:
             self._ui.primView.setCurrentItem(selectedItems[0])
-        for item in selectedItems:
-            item.setSelected(True)
-            self._ui.primView.scrollToItem(item)
+        self._ui.primView.updateSelection(selectedItems, [])
 
     def _updatePrimViewSelection(self, added, removed):
         """Do an incremental update to primView's selection using the added and
         removed prim paths from the selectionDataModel.
         """
-        for path in added:
-            item = self._getItemAtPath(path, ensureExpanded=True)
-            item.setSelected(True)
-            self._ui.primView.scrollToItem(item)
-        for path in removed:
-            item = self._getItemAtPath(path)
-            item.setSelected(False)
+        addedItems = [ 
+            self._getItemAtPath(path, ensureExpanded=True) 
+            for path in added ]
+        removedItems = [ self._getItemAtPath(path) for path in removed ]
+        self._ui.primView.updateSelection(addedItems, removedItems)
 
     def _primsFromSelectionRanges(self, ranges):
         """Iterate over all prims in a QItemSelection from primView."""
@@ -3052,15 +3101,28 @@ class AppController(QtCore.QObject):
                     self._dataModel.selection.removePrim(prim)
 
     def _itemClicked(self, item, col):
-        # toggleVis() returns True if the click caused a visibility change.
-        if col == PrimViewColumnIndex.VIS and item.toggleVis():
-            self.editComplete('Updated prim visibility')
+        # If user clicked in a selected row, we will toggle all selected items;
+        # otherwise, just the clicked one.
+        if col == PrimViewColumnIndex.VIS:
+            itemsToToggle = [ item ]
+            if item.isSelected():
+                itemsToToggle =  [
+                    self._getItemAtPath(prim.GetPath(), ensureExpanded=True)
+                    for prim in self._dataModel.selection.getPrims()]
+            changedAny = False
             with Timer() as t:
-                PrimViewItem.propagateVis(item)
+                for toToggle in itemsToToggle:
+                    # toggleVis() returns True if the click caused a visibility
+                    # change.
+                    changedOne = toToggle.toggleVis()
+                    if changedOne:
+                        PrimViewItem.propagateVis(toToggle)
+                        changedAny = True
+            if changedAny:
+                self.editComplete('Updated prim visibility')
             if self._printTiming:
                 t.PrintTime("update vis column")
-            self._updatePropertyInspector(
-                obj=self._dataModel.selection.getFocusPrim())
+            
 
     def _itemPressed(self, item, col):
         if col == PrimViewColumnIndex.DRAWMODE:
@@ -3167,8 +3229,10 @@ class AppController(QtCore.QObject):
 
         prim = self._dataModel.selection.getFocusPrim()
         composed = _GetCustomAttributes(prim, self._dataModel)
-        inheritedPrimvars = UsdGeom.PrimvarsAPI(prim).FindInheritedPrimvars() 
+        inheritedPrimvars = UsdGeom.PrimvarsAPI(prim).FindInheritablePrimvars() 
 
+        # There may be overlap between inheritedProps and prim attributes,
+        # but that's OK because propsDict will uniquify them below
         inheritedProps = [primvar.GetAttr() for primvar in inheritedPrimvars]
         props = prim.GetAttributes() + prim.GetRelationships()  + inheritedProps
 
@@ -3374,7 +3438,7 @@ class AppController(QtCore.QObject):
         if not obj:
             # Check if it is an inherited primvar.
             inheritedPrimvar = UsdGeom.PrimvarsAPI(
-                    focusPrim).FindInheritedPrimvar(attrName)
+                    focusPrim).FindPrimvarWithInheritance(attrName)
             if inheritedPrimvar:
                 obj = inheritedPrimvar.GetAttr()
         return obj
@@ -4454,6 +4518,7 @@ class AppController(QtCore.QObject):
         actions and submenus to match the values in the ViewSettingsDataModel.
         """
         self._refreshRenderModeMenu()
+        self._refreshColorCorrectionModeMenu()
         self._refreshPickModeMenu()
         self._refreshComplexityMenu()
         self._refreshBBoxMenu()
@@ -4476,6 +4541,11 @@ class AppController(QtCore.QObject):
         for action in self._renderModeActions:
             action.setChecked(
                 str(action.text()) == self._dataModel.viewSettings.renderMode)
+
+    def _refreshColorCorrectionModeMenu(self):
+        for action in self._colorCorrectionActions:
+            action.setChecked(
+                str(action.text()) == self._dataModel.viewSettings.colorCorrectionMode)
 
     def _refreshPickModeMenu(self):
         for action in self._pickModeActions:

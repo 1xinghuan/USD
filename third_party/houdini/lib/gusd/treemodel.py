@@ -23,13 +23,9 @@
 #
 import hou
 
-if hou.applicationVersion()[0] >= 16:
-    from PySide2.QtGui import *
-    from PySide2.QtCore import *
-    from PySide2.QtWidgets import *
-else:
-    from PySide.QtGui import *
-    from PySide.QtCore import *
+from hutil.Qt.QtGui import *
+from hutil.Qt.QtCore import *
+from hutil.Qt.QtWidgets import *
 
 from pxr import Usd, Sdf, UsdGeom, Ar
 
@@ -228,7 +224,7 @@ class TreeModel(QAbstractItemModel):
             return True
 
         # If this prim has a payload, consider it boundable.
-        if prim.HasPayload():
+        if prim.HasAuthoredPayloads():
             return True
 
         for child in prim.GetFilteredChildren(predicate):
@@ -267,7 +263,7 @@ class TreeModel(QAbstractItemModel):
                 primName = prim.GetName()
                 primTypeName = prim.GetTypeName()
                 primPath = prim.GetPath()
-                hasUnloadedPayload = prim.HasPayload()
+                hasUnloadedPayload = prim.HasAuthoredPayloads()
 
                 # Use parentItem's import state to determine its child's
                 # import state. (Note it is intentional that the parentItem's

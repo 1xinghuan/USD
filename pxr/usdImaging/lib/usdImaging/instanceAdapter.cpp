@@ -40,19 +40,11 @@
 
 #include "pxr/base/gf/matrix4f.h"
 
-#include "pxr/base/tf/staticTokens.h"
 #include "pxr/base/tf/type.h"
 
 #include <limits>
 
 PXR_NAMESPACE_OPEN_SCOPE
-
-
-// // XXX: These should come from Hd or UsdImaging
-TF_DEFINE_PRIVATE_TOKENS(
-    _tokens,
-    (instance)
-);
 
 TF_REGISTRY_FUNCTION(TfType)
 {
@@ -1717,7 +1709,6 @@ struct UsdImagingInstanceAdapter::_PopulateInstanceSelectionFn
 
         // add all protos.
         TF_FOR_ALL (it, instancerData->primMap) {
-            SdfPath protoRprim = it->first;
             // convert to indexPath (add prefix)
             SdfPath indexPath = adapter->_GetPathForIndex(it->first);
 
