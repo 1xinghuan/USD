@@ -71,12 +71,15 @@ TF_DECLARE_PUBLIC_TOKENS(UsdMayaXformStackTokens,
 class UsdMayaXformOpClassification
 {
 public:
+    PXRUSDMAYA_API
     UsdMayaXformOpClassification(const TfToken &name,
                                        UsdGeomXformOp::Type opType,
                                        bool isInvertedTwin=false);
 
+    PXRUSDMAYA_API
     UsdMayaXformOpClassification();
 
+    PXRUSDMAYA_API
     static UsdMayaXformOpClassification const & NullInstance();
 
     PXRUSDMAYA_API
@@ -167,6 +170,7 @@ public:
         }
     }
 
+    PXRUSDMAYA_API
     UsdMayaXformStack(
             const OpClassList& ops,
             const std::vector<IndexPair>& inversionTwins,
