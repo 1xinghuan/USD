@@ -29,6 +29,8 @@
 #include "usdKatana/usdInArgs.h"
 
 #include "pxr/usd/usd/prim.h"
+#include "pxr/usd/usdShade/materialBindingAPI.h"
+
 #include <FnGeolib/op/FnGeolibOp.h>
 #include <memory>
 
@@ -47,6 +49,20 @@ public:
         std::map<SdfPath, SdfPath> baseMaterialPath;
         // Maintain order of derivedMaterials, for presentation.
         std::map<SdfPath, std::vector<SdfPath>> derivedMaterialPaths;
+    };
+
+    /// \brief Pair for associating a USD time with a Katana time.
+    USDKATANA_API
+    struct UsdKatanaTimePair {
+        bool operator==(const UsdKatanaTimePair& o) const {
+            return usdTime == o.usdTime && katanaTime == o.katanaTime;
+        }
+        bool operator!=(const UsdKatanaTimePair& o) const {
+            return !(*this == o);
+        }
+
+        double usdTime;
+        double katanaTime;
     };
 
     USDKATANA_API
@@ -104,7 +120,7 @@ public:
     ///        wish to multi-sample USD data and build corresponding Katana 
     ///        attributes.
     USDKATANA_API
-    std::vector<std::pair<double, double> > GetUsdAndKatanaTimes(
+    std::vector<UsdKatanaTimePair> GetUsdAndKatanaTimes(
         const UsdAttribute& attr = UsdAttribute()) const;
 
 
@@ -131,6 +147,15 @@ public:
             FnAttribute::GroupAttribute opArgs) const;
     
     
+    /// \brief Access to shared caches relevant to efficient binding of
+    ///        materials across the hierarchy.
+    UsdShadeMaterialBindingAPI::CollectionQueryCache *
+    GetCollectionQueryCache() const;
+    UsdShadeMaterialBindingAPI::BindingsCache *
+    GetBindingsCache() const;
+
+
+
     /// \brief extract private data from either the interface (its natural
     ///        location) with room for future growth
     USDKATANA_API
@@ -155,6 +180,16 @@ private:
     
     
     mutable FnAttribute::GroupBuilder * _extGb;
+
+
+
+    typedef std::shared_ptr<UsdShadeMaterialBindingAPI::CollectionQueryCache>
+            _CollectionQueryCachePtr;
+    typedef std::shared_ptr<UsdShadeMaterialBindingAPI::BindingsCache>
+            _BindingsCachePtr;
+
+    _CollectionQueryCachePtr _collectionQueryCache;
+    _BindingsCachePtr _bindingsCache;
 
 
 };
