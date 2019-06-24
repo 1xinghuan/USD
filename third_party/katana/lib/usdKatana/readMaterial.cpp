@@ -230,7 +230,7 @@ _GatherShadingParameters(
             inputAttr.GetConnections(&conns);
 
             // Use a NullAttribute to capture the block
-            if (hasAuthoredConnections and conns.empty()) {
+            if (hasAuthoredConnections && conns.empty()) {
                 connectionsBuilder.set(inputId, FnKat::NullAttribute());
             }
         }

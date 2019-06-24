@@ -1,12 +1,15 @@
 set(PXR_PACKAGE vtKatana)
 
-pxr_shared_library(${PXR_PACKAGE}
+pxr_static_library(${PXR_PACKAGE}
     LIBRARIES
         gf
         tf
         vt
         sdf
         katanaPluginApi
+
+    PUBLIC_HEADERS
+        api.h
 
     PUBLIC_CLASSES
         array
@@ -21,3 +24,21 @@ pxr_shared_library(${PXR_PACKAGE}
         internalFromVt.h
 )
 
+target_compile_definitions(${PXR_PACKAGE}
+    PRIVATE
+
+    FNASSET_STATIC
+    FNATTRIBUTE_STATIC
+    FNATTRIBUTEFUNCTION_STATIC
+    FNATTRIBUTEMODIFIER_STATIC
+    FNCONFIG_STATIC
+    FNDEFAULTATTRIBUTEPRODUCER_STATIC
+    FNGEOLIB_STATIC
+    FNGEOLIBSERVICES_STATIC
+    FNLOGGING_STATIC
+    FNPLUGINMANAGER_STATIC
+    FNRENDEROUTPUTLOCATION_STATIC
+    FNSCENEGRAPHGENERATOR_STATIC
+    FNSCENEGRAPHITERATOR_STATIC
+    PYSTRING_STATIC
+)

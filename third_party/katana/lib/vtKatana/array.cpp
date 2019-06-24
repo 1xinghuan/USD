@@ -84,7 +84,7 @@ typename VtKatana_GetKatanaAttrType<T>::type VtKatanaMapOrCopy(
     auto checkSizes = [&values](const VtArray<T>& array) {
         return values.front().size() == array.size();
     };
-    if (not std::all_of(values.begin() + 1, values.end(), checkSizes)) {
+    if (! std::all_of(values.begin() + 1, values.end(), checkSizes)) {
         TF_CODING_ERROR("'values' topology is varying.");
         return VtKatana_Internal::FailureAttr<AttrType>();
     }
@@ -128,7 +128,7 @@ typename VtKatana_GetKatanaAttrType<T>::type VtKatanaCopy(
     auto checkSizes = [&values](const VtArray<T>& array) {
         return values.front().size() == array.size();
     };
-    if (not std::all_of(values.begin() + 1, values.end(), checkSizes)) {
+    if (! std::all_of(values.begin() + 1, values.end(), checkSizes)) {
         TF_CODING_ERROR("'values' topology is varying.");
         return VtKatana_Internal::FailureAttr<AttrType>();
     }

@@ -25,7 +25,9 @@
 
 #include <memory>
 #include <type_traits>
-
+#ifdef _WIN32
+#   include <FnPlatform/Windows.h>
+#endif
 #include <FnAttribute/FnAttribute.h>
 
 #include "pxr/base/tf/envSetting.h"

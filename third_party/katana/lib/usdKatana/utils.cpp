@@ -54,6 +54,8 @@
 
 #include "vtKatana/array.h"
 #include "vtKatana/value.h"
+#include "vtKatana/array.cpp"
+#include "vtKatana/value.cpp"
 
 #include "usdKatana/utils.h"
 #include "usdKatana/blindDataObject.h"

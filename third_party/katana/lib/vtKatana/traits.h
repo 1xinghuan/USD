@@ -26,6 +26,10 @@
 
 #include "pxr/pxr.h"
 
+#ifdef _WIN32
+#   include <FnPlatform/Windows.h>
+#endif
+#include <FnPluginManager/FnPluginManager.h>
 #include <type_traits>
 
 #include <FnAttribute/FnAttribute.h>
@@ -149,7 +153,7 @@ struct VtKatana_IsNumeric
 /// Type
 template <typename T, typename = void>
 struct VtKatana_GetKatanaAttrType {
-    typedef FnAttribute::NullAttribute type;
+    typedef typename FnAttribute::NullAttribute type;
 };
 
 /// Strings and String Holders map to Katana StringAttributes
@@ -157,7 +161,9 @@ struct VtKatana_GetKatanaAttrType {
 template <typename T>
 struct VtKatana_GetKatanaAttrType<
     T, typename std::enable_if<VtKatana_IsOrHoldsString<T>::value>::type> {
-    typedef FnAttribute::StringAttribute type;
+    typedef typename FnAttribute::StringAttribute type;
+    typedef typename type::value_type value_type;
+    typedef typename type::array_type array_type;
 };
 
 /// Numeric integral types map to Katana IntAttributes
@@ -168,7 +174,9 @@ struct VtKatana_GetKatanaAttrType<
            VtKatana_IsNumeric<T>::value &&
            std::is_integral<
                typename VtKatana_GetNumericScalarType<T>::type>::value>::type> {
-    typedef FnAttribute::IntAttribute type;
+    typedef typename FnAttribute::IntAttribute type;
+    typedef typename type::value_type value_type;
+    typedef typename type::array_type array_type;
 };
 
 /// Float and Half numeric types map to Katana FloatAttributes
@@ -181,7 +189,9 @@ struct VtKatana_GetKatanaAttrType<
                          float>::value ||
             std::is_same<typename VtKatana_GetNumericScalarType<T>::type,
                          GfHalf>::value)>::type> {
-    typedef FnAttribute::FloatAttribute type;
+    typedef typename FnAttribute::FloatAttribute type;
+    typedef typename type::value_type value_type;
+    typedef typename type::array_type array_type;
 };
 
 /// Double numeric types map to Katana DoubleAttributes
@@ -192,7 +202,9 @@ struct VtKatana_GetKatanaAttrType<
            VtKatana_IsNumeric<T>::value &&
            std::is_same<typename VtKatana_GetNumericScalarType<T>::type,
                         double>::value>::type> {
-    typedef FnAttribute::DoubleAttribute type;
+    typedef typename FnAttribute::DoubleAttribute type;
+    typedef typename type::value_type value_type;
+    typedef typename type::array_type array_type;
 };
 
 /// All Katana Data Attribute types (Float, String, Int, Double) have
@@ -202,7 +214,7 @@ template <typename T,
               FnAttribute::DataAttribute,
               typename VtKatana_GetKatanaAttrType<T>::type>::value>::type>
 struct VtKatana_GetKatanaAttrValueType {
-    typedef typename VtKatana_GetKatanaAttrType<T>::type::value_type type;
+    typedef typename VtKatana_GetKatanaAttrType<T>::value_type type;
 };
 
 PXR_NAMESPACE_CLOSE_SCOPE

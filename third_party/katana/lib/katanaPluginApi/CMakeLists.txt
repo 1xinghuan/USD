@@ -23,7 +23,6 @@ file(GLOB cppFiles
     ${KATANA_API_SOURCE_DIR}/FnLogging/client/*.cpp
     ${KATANA_API_SOURCE_DIR}/FnPluginManager/client/*.cpp
     ${KATANA_API_SOURCE_DIR}/FnPluginSystem/*.cpp
-    ${KATANA_API_SOURCE_DIR}/FnRender/plugin/*.cpp
     ${KATANA_API_SOURCE_DIR}/FnRenderOutputLocation/client/*.cpp
     ${KATANA_API_SOURCE_DIR}/FnRenderOutputLocation/plugin/*.cpp
     ${KATANA_API_SOURCE_DIR}/FnRenderOutputUtils/client/*.cpp

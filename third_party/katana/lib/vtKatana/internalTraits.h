@@ -206,7 +206,7 @@ template <typename T>
 typename std::enable_if<VtKatana_IsNumericCastableScalar<T>::value,
                         const T*>::type
 VtKatana_GetVtPtr(
-    const typename VtKatana_GetKatanaAttrType<T>::type::array_type& sample) {
+    const typename VtKatana_GetKatanaAttrType<T>::array_type& sample) {
     return sample.data();
 };
 
@@ -215,7 +215,7 @@ template <typename T>
 typename std::enable_if<VtKatana_IsNumericCastable<T>::value,
                         bool>::type
 VtKatana_IsSampleAligned( 
-    const typename VtKatana_GetKatanaAttrType<T>::type::array_type& sample){
+    const typename VtKatana_GetKatanaAttrType<T>::array_type& sample){
     auto data = sample.data();
     return ((size_t)data) % alignof(T) == 0;
 }
@@ -228,7 +228,7 @@ template <typename T>
 typename std::enable_if<VtKatana_IsNumericCastableTuple<T>::value,
                         const T*>::type
 VtKatana_GetVtPtr(
-    const typename VtKatana_GetKatanaAttrType<T>::type::array_type& sample) {
+    const typename VtKatana_GetKatanaAttrType<T>::array_type& sample) {
     TF_VERIFY(VtKatana_IsSampleAligned<T>(sample));
     return reinterpret_cast<const T*>(sample.data());
 };
